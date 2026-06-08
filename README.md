@@ -1,6 +1,6 @@
 # Automatic Scanner
 
-Automatic Scanner is a phone-friendly Micas switch scan station. It lets Mr. Sean take a phone photo of a switch label, extracts model and serial numbers, validates each scan before saving, and sends clean rows to Google Sheets.
+Automatic Scanner is a phone-friendly Micas switch scan station. It lets users take a photo of a switch label with a phone, extracts the model and serial numbers, validates each scan before saving, and sends clean rows to Google Sheets.
 
 ## What It Solves
 
