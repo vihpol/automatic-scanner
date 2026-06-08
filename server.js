@@ -1,7 +1,9 @@
+const childProcess = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
 const http = require("http");
+const os = require("os");
 const path = require("path");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -142,12 +144,12 @@ async function extractScanFromImage(imageDataUrl) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required to extract model and serial numbers from photos.");
-  }
-
   if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(String(imageDataUrl || ""))) {
     throw new Error("A PNG, JPEG, or WebP image data URL is required.");
+  }
+
+  if (!apiKey) {
+    return extractScanWithTesseract(imageDataUrl);
   }
 
   const response = await requestJson("https://api.openai.com/v1/responses", {
@@ -196,6 +198,139 @@ async function extractScanFromImage(imageDataUrl) {
     notes: String(parsed.notes || "").trim(),
     rawText: outputText
   };
+}
+
+async function extractScanWithTesseract(imageDataUrl) {
+  const image = decodeImageDataUrl(imageDataUrl);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "automatic-scanner-"));
+  const imagePath = path.join(tempDir, `label.${image.extension}`);
+
+  try {
+    fs.writeFileSync(imagePath, image.buffer);
+    const text = await runTesseract(imagePath);
+    const parsed = parseInventoryText(text);
+
+    return {
+      modelNumber: parsed.modelNumber,
+      serialNumber: parsed.serialNumber,
+      confidence: parsed.confidence,
+      notes: parsed.notes,
+      rawText: text
+    };
+  } finally {
+    try {
+      fs.unlinkSync(imagePath);
+      fs.rmdirSync(tempDir);
+    } catch (error) {
+      console.warn("Unable to clean temporary OCR files:", error.message);
+    }
+  }
+}
+
+function decodeImageDataUrl(imageDataUrl) {
+  const match = String(imageDataUrl || "").match(/^data:image\/(png|jpe?g|webp);base64,([\s\S]+)$/i);
+  if (!match) {
+    throw new Error("A PNG, JPEG, or WebP image data URL is required.");
+  }
+
+  const mimeExtension = match[1].toLowerCase();
+  const extension = mimeExtension === "jpeg" || mimeExtension === "jpg" ? "jpg" : mimeExtension;
+
+  return {
+    extension,
+    buffer: Buffer.from(match[2], "base64")
+  };
+}
+
+function runTesseract(imagePath) {
+  return new Promise((resolve, reject) => {
+    childProcess.execFile(
+      "tesseract",
+      [imagePath, "stdout", "--psm", "6"],
+      {
+        timeout: 20000,
+        maxBuffer: 1024 * 1024
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message));
+          return;
+        }
+
+        resolve(stdout.trim());
+      }
+    );
+  });
+}
+
+function parseInventoryText(text) {
+  const normalized = String(text || "")
+    .replace(/[|]/g, "I")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+
+  const serialNumber = findLabeledValue(normalized, [
+    "serial number",
+    "serial no",
+    "serial",
+    "service tag",
+    "s/n",
+    "sn"
+  ]);
+  const modelNumber = findLabeledValue(normalized, [
+    "model number",
+    "model no",
+    "model",
+    "part number",
+    "part no",
+    "p/n",
+    "pn",
+    "sku"
+  ]);
+
+  const candidates = normalized
+    .split(/[^A-Z0-9._/-]+/i)
+    .map((value) => cleanInventoryValue(value))
+    .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 5);
+
+  const fallbackSerial = candidates
+    .slice()
+    .sort((a, b) => b.length - a.length)[0] || "";
+  const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial) || "";
+
+  const resolvedModel = cleanInventoryValue(modelNumber || fallbackModel);
+  const resolvedSerial = cleanInventoryValue(serialNumber || fallbackSerial);
+  const foundBoth = Boolean(resolvedModel && resolvedSerial);
+  const usedLabels = Boolean(modelNumber || serialNumber);
+
+  return {
+    modelNumber: resolvedModel,
+    serialNumber: resolvedSerial,
+    confidence: foundBoth ? (usedLabels ? 0.72 : 0.48) : 0.25,
+    notes: foundBoth
+      ? "Extracted with local OCR. Review before saving."
+      : "Local OCR could not confidently find both fields. Type missing values before saving."
+  };
+}
+
+function findLabeledValue(text, labels) {
+  for (const label of labels) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`${escapedLabel}\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9._/-]{2,})`, "i");
+    const match = text.match(pattern);
+    if (match) return cleanInventoryValue(match[1]);
+  }
+
+  return "";
+}
+
+function cleanInventoryValue(value) {
+  return String(value || "")
+    .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, "")
+    .replace(/O(?=\d)/g, "0")
+    .replace(/\s+/g, "")
+    .toUpperCase();
 }
 
 function extractOpenAIText(data) {
