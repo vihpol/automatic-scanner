@@ -1,17 +1,13 @@
 const state = {
-  detector: null,
-  stream: null,
-  scanTarget: "model",
-  scanning: false,
-  lastValue: "",
-  lastDetectedAt: 0,
+  imageDataUrl: "",
   history: []
 };
 
-const camera = document.querySelector("#camera");
 const supportStatus = document.querySelector("#supportStatus");
-const startCamera = document.querySelector("#startCamera");
-const stopCamera = document.querySelector("#stopCamera");
+const labelPhoto = document.querySelector("#labelPhoto");
+const photoPreview = document.querySelector("#photoPreview");
+const photoPlaceholder = document.querySelector("#photoPlaceholder");
+const extractPhoto = document.querySelector("#extractPhoto");
 const scanForm = document.querySelector("#scanForm");
 const submitScan = document.querySelector("#submitScan");
 const formStatus = document.querySelector("#formStatus");
@@ -19,34 +15,13 @@ const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
 const notes = document.querySelector("#notes");
 const historyList = document.querySelector("#historyList");
-const modeButtons = document.querySelectorAll("[data-scan-target]");
 
 initialize();
 
 function initialize() {
-  if ("BarcodeDetector" in window) {
-    state.detector = new BarcodeDetector({
-      formats: [
-        "code_128",
-        "code_39",
-        "codabar",
-        "data_matrix",
-        "ean_13",
-        "qr_code",
-        "upc_a"
-      ]
-    });
-    supportStatus.textContent = "Camera ready";
-  } else {
-    supportStatus.textContent = "Manual entry fallback";
-  }
-
-  modeButtons.forEach((button) => {
-    button.addEventListener("click", () => setScanTarget(button.dataset.scanTarget));
-  });
-
-  startCamera.addEventListener("click", beginCamera);
-  stopCamera.addEventListener("click", endCamera);
+  supportStatus.textContent = "Photo mode";
+  labelPhoto.addEventListener("change", handlePhotoSelection);
+  extractPhoto.addEventListener("click", extractFromPhoto);
   scanForm.addEventListener("submit", submitCurrentScan);
   modelNumber.addEventListener("input", updateValidation);
   serialNumber.addEventListener("input", updateValidation);
@@ -54,87 +29,63 @@ function initialize() {
   updateValidation();
 }
 
-function setScanTarget(target) {
-  state.scanTarget = target;
-  modeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.scanTarget === target);
-  });
-  if (state.scanning) {
-    supportStatus.textContent = `Scanning ${target}`;
-  }
-}
+async function handlePhotoSelection(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
 
-async function beginCamera() {
-  if (!state.detector) {
-    supportStatus.textContent = "Barcode detection unavailable";
+  if (!file.type.startsWith("image/")) {
+    setFormStatus("Choose an image file.", false);
     return;
   }
 
   try {
-    state.stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment"
-      },
-      audio: false
-    });
-    camera.srcObject = state.stream;
-    state.scanning = true;
-    supportStatus.textContent = `Scanning ${state.scanTarget}`;
-    requestAnimationFrame(scanFrame);
+    state.imageDataUrl = await readCompressedImage(file);
+    photoPreview.src = state.imageDataUrl;
+    photoPreview.classList.add("visible");
+    photoPlaceholder.classList.add("hidden");
+    extractPhoto.disabled = false;
+    supportStatus.textContent = "Photo ready";
+    setFormStatus("Photo selected. Extract fields when ready.", true);
   } catch (error) {
-    supportStatus.textContent = "Camera blocked";
     console.error(error);
+    setFormStatus("Unable to read the photo.", false);
   }
 }
 
-function endCamera() {
-  state.scanning = false;
-  if (state.stream) {
-    state.stream.getTracks().forEach((track) => track.stop());
-  }
-  camera.srcObject = null;
-  supportStatus.textContent = state.detector ? "Camera ready" : "Manual entry fallback";
-}
-
-async function scanFrame() {
-  if (!state.scanning || !state.detector) return;
-
-  if (camera.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-    try {
-      const codes = await state.detector.detect(camera);
-      if (codes.length > 0) {
-        handleDetectedCode(codes[0].rawValue);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  requestAnimationFrame(scanFrame);
-}
-
-function handleDetectedCode(rawValue) {
-  const value = String(rawValue || "").trim();
-  const now = Date.now();
-
-  if (!value || (value === state.lastValue && now - state.lastDetectedAt < 1600)) {
+async function extractFromPhoto() {
+  if (!state.imageDataUrl) {
+    setFormStatus("Take or choose a photo first.", false);
     return;
   }
 
-  state.lastValue = value;
-  state.lastDetectedAt = now;
+  extractPhoto.disabled = true;
+  supportStatus.textContent = "Processing photo";
+  setFormStatus("Extracting model and serial from the photo.", true);
 
-  const capturedTarget = state.scanTarget;
+  try {
+    const response = await fetch("/api/extract", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageDataUrl: state.imageDataUrl
+      })
+    });
+    const result = await response.json();
 
-  if (capturedTarget === "model") {
-    modelNumber.value = value;
-    setScanTarget("serial");
-  } else {
-    serialNumber.value = value;
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "Unable to extract fields.");
+    }
+
+    applyExtraction(result.extraction);
+  } catch (error) {
+    console.error(error);
+    setFormStatus(error.message || "Unable to extract fields from the photo.", false);
+    supportStatus.textContent = "Extraction failed";
+  } finally {
+    extractPhoto.disabled = false;
   }
-
-  supportStatus.textContent = `Captured ${capturedTarget}`;
-  updateValidation();
 }
 
 async function submitCurrentScan(event) {
@@ -144,7 +95,7 @@ async function submitCurrentScan(event) {
     modelNumber: modelNumber.value.trim(),
     serialNumber: serialNumber.value.trim(),
     notes: notes.value.trim(),
-    source: "phone-scanner"
+    source: "phone-photo"
   };
 
   const errors = getValidationErrors(payload);
@@ -176,10 +127,10 @@ async function submitCurrentScan(event) {
     renderHistory();
     serialNumber.value = "";
     notes.value = "";
-    setScanTarget("serial");
+    clearPhoto();
     saved = true;
     updateValidation();
-    setFormStatus("Saved. Ready for the next serial number.", true);
+    setFormStatus("Saved. Ready for the next photo.", true);
   } catch (error) {
     setFormStatus(error.message || "Unable to save scan.", false);
   } finally {
@@ -187,6 +138,63 @@ async function submitCurrentScan(event) {
       updateValidation();
     }
   }
+}
+
+function applyExtraction(extraction) {
+  modelNumber.value = extraction.modelNumber || "";
+  serialNumber.value = extraction.serialNumber || "";
+
+  if (extraction.notes) {
+    notes.value = extraction.notes;
+  }
+
+  const confidence = Math.round(Number(extraction.confidence || 0) * 100);
+  supportStatus.textContent = confidence ? `${confidence}% confidence` : "Extraction complete";
+  updateValidation();
+
+  const missing = getValidationErrors({
+    modelNumber: modelNumber.value.trim(),
+    serialNumber: serialNumber.value.trim()
+  });
+
+  if (missing.length > 0) {
+    setFormStatus(`Check the photo or type missing fields. ${missing.join(" ")}`, false);
+  } else {
+    setFormStatus("Fields extracted. Review them, then send to Google Sheets.", true);
+  }
+}
+
+function clearPhoto() {
+  state.imageDataUrl = "";
+  labelPhoto.value = "";
+  photoPreview.removeAttribute("src");
+  photoPreview.classList.remove("visible");
+  photoPlaceholder.classList.remove("hidden");
+  extractPhoto.disabled = true;
+  supportStatus.textContent = "Photo mode";
+}
+
+function readCompressedImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const maxDimension = 1600;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.84));
+      };
+      image.onerror = reject;
+      image.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function updateValidation() {
@@ -231,7 +239,7 @@ function renderHistory() {
     item.className = "history-item";
     item.innerHTML = `
       <strong>${escapeHtml(scan.serialNumber)}</strong>
-      <span>${escapeHtml(scan.modelNumber)} · ${new Date(scan.timestamp).toLocaleTimeString()}</span>
+      <span>${escapeHtml(scan.modelNumber)} &middot; ${new Date(scan.timestamp).toLocaleTimeString()}</span>
     `;
     historyList.append(item);
   });

@@ -1,11 +1,11 @@
 # Automatic Scanner
 
-Automatic Scanner is a phone-friendly inventory scanning app for operations teams. It helps Mr. Sean capture model and serial numbers from product labels, validates each scan before saving, and sends clean rows to Google Sheets.
+Automatic Scanner is a phone-friendly inventory scanning app for operations teams. It lets Mr. Sean take a phone photo of a product label, uses OpenAI vision processing to extract model and serial numbers, validates each scan before saving, and sends clean rows to Google Sheets.
 
 ## What It Solves
 
 - Prevents blank spreadsheet rows from being missed in manual scans.
-- Captures both model number and serial number in the same workflow.
+- Captures both model number and serial number from one label photo.
 - Prompts immediately when a required field is missing.
 - Sends confirmed scan records directly to Google Sheets.
 - Keeps a local session history so the operator can review recent scans.
@@ -33,6 +33,8 @@ automatic-scanner/
 4. Share the target Google Sheet with the service account email as an editor.
 5. Copy `.env.example` to `.env`.
 6. Fill in:
+   - `OPENAI_API_KEY`
+   - `OPENAI_MODEL`
    - `GOOGLE_SHEET_ID`
    - `GOOGLE_SHEET_TAB`
    - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
@@ -64,17 +66,19 @@ http://192.168.1.20:3000
 
 For phone testing, set `HOST=0.0.0.0` in `.env` so other devices on the network can reach the server.
 
-Camera access usually requires HTTPS or localhost. If mobile browser camera access is blocked on a local IP, deploy this app or run it behind an HTTPS tunnel.
+The photo picker works on mobile browsers without embedding a live camera stream in the page. For the best phone experience, open the app from the phone and tap **Take Photo**.
 
 ## How the Scanner Works
 
-1. Choose whether you are scanning a model number or serial number.
-2. Point the phone camera at a barcode.
-3. The app reads supported barcode formats through the browser `BarcodeDetector` API when available.
-4. If the browser cannot detect the code, the operator can type or paste the value manually.
-5. The app only enables submission when both model and serial are present.
-6. The backend appends the validated row to Google Sheets.
+1. Sean taps **Take Photo** on his phone.
+2. The phone camera captures a clear label photo.
+3. The browser compresses the photo and sends it to `/api/extract`.
+4. The backend sends the image to the OpenAI Responses API.
+5. The extracted model number and serial number are filled into the form.
+6. Sean reviews or edits the fields.
+7. The app only enables submission when both model and serial are present.
+8. The backend appends the validated row to Google Sheets.
 
 ## Notes
 
-This MVP uses browser barcode detection and manual fallback. Photo-based OCR for printed model text can be added later with a vision/OCR service, but the validation flow is already designed for that upgrade.
+The photo extraction endpoint requires `OPENAI_API_KEY`. If Google Sheets credentials are not configured, validated scans are accepted and logged locally for development.

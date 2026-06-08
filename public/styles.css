@@ -94,36 +94,25 @@ h2 {
   white-space: nowrap;
 }
 
-.scan-mode {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.mode-button,
-.secondary-button,
 .primary-button,
+.file-button,
 .submit-button {
   min-height: 44px;
   border-radius: 6px;
   font-weight: 700;
 }
 
-.mode-button {
-  background: #e9efec;
-  color: var(--ink);
-}
-
-.mode-button.active,
 .primary-button,
+.file-button,
 .submit-button {
   background: var(--accent);
   color: #ffffff;
 }
 
-.camera-frame {
+.photo-frame {
   position: relative;
+  display: grid;
+  place-items: center;
   overflow: hidden;
   width: 100%;
   aspect-ratio: 4 / 3;
@@ -131,32 +120,59 @@ h2 {
   border-radius: 8px;
 }
 
-video {
+.photo-frame img {
+  display: none;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.scan-line {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 50%;
-  height: 2px;
-  background: #44d6b7;
-  box-shadow: 0 0 16px rgba(68, 214, 183, 0.8);
+.photo-frame img.visible {
+  display: block;
 }
 
-.camera-actions {
+.photo-placeholder {
   display: grid;
-  grid-template-columns: 1fr 96px;
+  gap: 8px;
+  max-width: 320px;
+  color: #d7e7e2;
+  padding: 22px;
+  text-align: center;
+}
+
+.photo-placeholder strong {
+  color: #ffffff;
+  font-size: 1.1rem;
+}
+
+.photo-placeholder span {
+  color: #abc1bb;
+  font-size: 0.92rem;
+}
+
+.photo-placeholder.hidden {
+  display: none;
+}
+
+.photo-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin: 14px 0 18px;
 }
 
-.secondary-button {
-  background: #dce5e1;
-  color: var(--ink);
+.photo-actions input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-button {
+  display: grid;
+  place-items: center;
+  text-align: center;
 }
 
 .scan-form {
@@ -198,6 +214,7 @@ textarea:focus {
   color: var(--success);
 }
 
+.primary-button:disabled,
 .submit-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;

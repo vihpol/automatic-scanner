@@ -41,6 +41,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/extract") {
+      const body = await readJson(req, 9000000);
+      const extraction = await extractScanFromImage(body.imageDataUrl);
+      sendJson(res, 200, { ok: true, extraction });
+      return;
+    }
+
     if (req.method === "GET") {
       serveStatic(req, res);
       return;
@@ -51,7 +58,7 @@ const server = http.createServer(async (req, res) => {
     console.error(error);
     sendJson(res, 500, {
       ok: false,
-      error: "Something went wrong while processing the request."
+      error: error.message || "Something went wrong while processing the request."
     });
   }
 });
@@ -109,12 +116,13 @@ function serveStatic(req, res) {
   });
 }
 
-function readJson(req) {
+function readJson(req, maxBytes) {
   return new Promise((resolve, reject) => {
     let body = "";
+    const limit = maxBytes || 1000000;
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1000000) {
+      if (body.length > limit) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -128,6 +136,93 @@ function readJson(req) {
     });
     req.on("error", reject);
   });
+}
+
+async function extractScanFromImage(imageDataUrl) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required to extract model and serial numbers from photos.");
+  }
+
+  if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(String(imageDataUrl || ""))) {
+    throw new Error("A PNG, JPEG, or WebP image data URL is required.");
+  }
+
+  const response = await requestJson("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                "Extract the inventory model number and serial number from this product label photo. " +
+                "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
+                "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
+                "Notes should briefly mention uncertainty, glare, blur, or missing fields."
+            },
+            {
+              type: "input_image",
+              image_url: imageDataUrl,
+              detail: "high"
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(`OpenAI extraction failed: ${response.body}`);
+  }
+
+  const data = JSON.parse(response.body);
+  const outputText = extractOpenAIText(data);
+  const parsed = parseJsonObject(outputText);
+
+  return {
+    modelNumber: String(parsed.modelNumber || "").trim(),
+    serialNumber: String(parsed.serialNumber || "").trim(),
+    confidence: Number(parsed.confidence || 0),
+    notes: String(parsed.notes || "").trim(),
+    rawText: outputText
+  };
+}
+
+function extractOpenAIText(data) {
+  if (data.output_text) return data.output_text;
+
+  const output = Array.isArray(data.output) ? data.output : [];
+  const parts = [];
+
+  for (const item of output) {
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const contentItem of content) {
+      if (contentItem.text) parts.push(contentItem.text);
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
+function parseJsonObject(text) {
+  const trimmed = String(text || "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw error;
+    return JSON.parse(match[0]);
+  }
 }
 
 function normalizeScan(body) {
@@ -261,7 +356,7 @@ function base64ToBase64Url(value) {
 function requestJson(url, options) {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
-    const body = options.body || "";
+    const body = options.body ? String(options.body) : "";
     const request = https.request(
       {
         method: options.method || "GET",
