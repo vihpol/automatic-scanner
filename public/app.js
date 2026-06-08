@@ -1,6 +1,6 @@
 const state = {
   imageDataUrl: "",
-  history: []
+  saving: false
 };
 
 const supportStatus = document.querySelector("#supportStatus");
@@ -13,18 +13,18 @@ const submitScan = document.querySelector("#submitScan");
 const formStatus = document.querySelector("#formStatus");
 const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
-const historyList = document.querySelector("#historyList");
+const autoSave = document.querySelector("#autoSave");
 
 initialize();
 
 function initialize() {
-  supportStatus.textContent = "Photo mode";
+  supportStatus.textContent = "Ready";
   labelPhoto.addEventListener("change", handlePhotoSelection);
   extractPhoto.addEventListener("click", extractFromPhoto);
   scanForm.addEventListener("submit", submitCurrentScan);
   modelNumber.addEventListener("input", updateValidation);
   serialNumber.addEventListener("input", updateValidation);
-  renderHistory();
+  autoSave.addEventListener("change", updateValidation);
   updateValidation();
 }
 
@@ -53,14 +53,14 @@ async function handlePhotoSelection(event) {
 
 async function extractFromPhoto() {
   if (!state.imageDataUrl) {
-    setFormStatus("Take or choose a photo first.", false);
+    setFormStatus("Take a photo first.", false);
     return;
   }
 
   extractPhoto.disabled = true;
   extractPhoto.classList.add("hidden");
-  supportStatus.textContent = "Reading label";
-  setFormStatus("Reading model and serial.", true);
+  supportStatus.textContent = "Reading";
+  setFormStatus("Reading label.", true);
 
   try {
     const response = await fetch("/api/extract", {
@@ -78,11 +78,11 @@ async function extractFromPhoto() {
       throw new Error(result.error || "Unable to extract fields.");
     }
 
-    applyExtraction(result.extraction);
+    await applyExtraction(result.extraction);
   } catch (error) {
     console.error(error);
-    setFormStatus("OCR failed. Retake photo or enter fields.", false);
-    supportStatus.textContent = "Needs review";
+    setFormStatus("OCR failed. Retake photo or type fields.", false);
+    supportStatus.textContent = "Review";
     extractPhoto.classList.remove("hidden");
   } finally {
     extractPhoto.disabled = false;
@@ -91,7 +91,10 @@ async function extractFromPhoto() {
 
 async function submitCurrentScan(event) {
   event.preventDefault();
+  await saveScan();
+}
 
+async function saveScan() {
   const payload = {
     modelNumber: modelNumber.value.trim(),
     serialNumber: serialNumber.value.trim(),
@@ -100,14 +103,15 @@ async function submitCurrentScan(event) {
   };
 
   const errors = getValidationErrors(payload);
-  if (errors.length > 0) {
+  if (errors.length > 0 || state.saving) {
     setFormStatus(errors.join(" "), false);
     return;
   }
 
+  state.saving = true;
   submitScan.disabled = true;
-  setFormStatus("Sending scan.", true);
-  let saved = false;
+  supportStatus.textContent = "Saving";
+  setFormStatus("Sending to Google Sheets.", true);
 
   try {
     const response = await fetch("/api/scans", {
@@ -123,29 +127,25 @@ async function submitCurrentScan(event) {
       throw new Error((result.errors || [result.error]).join(" "));
     }
 
-    state.history.unshift(result.scan);
-    state.history = state.history.slice(0, 8);
-    renderHistory();
     serialNumber.value = "";
     clearPhoto();
-    saved = true;
-    updateValidation();
-    setFormStatus("Saved. Ready for the next photo.", true);
+    setFormStatus("Saved. Ready for next label.", true);
   } catch (error) {
     setFormStatus(error.message || "Unable to save scan.", false);
+    supportStatus.textContent = "Review";
   } finally {
-    if (!saved) {
-      updateValidation();
-    }
+    state.saving = false;
+    updateValidation();
   }
 }
 
-function applyExtraction(extraction) {
+async function applyExtraction(extraction) {
   modelNumber.value = extraction.modelNumber || "";
   serialNumber.value = extraction.serialNumber || "";
 
-  const confidence = Math.round(Number(extraction.confidence || 0) * 100);
-  supportStatus.textContent = confidence ? `${confidence}% read` : "Read complete";
+  const confidence = Number(extraction.confidence || 0);
+  const confidencePercent = Math.round(confidence * 100);
+  supportStatus.textContent = confidencePercent ? `${confidencePercent}% read` : "Read";
   updateValidation();
 
   const missing = getValidationErrors({
@@ -156,9 +156,16 @@ function applyExtraction(extraction) {
   if (missing.length > 0) {
     setFormStatus(`Review needed. ${missing.join(" ")}`, false);
     extractPhoto.classList.remove("hidden");
-  } else {
-    setFormStatus("Ready to save.", true);
+    return;
   }
+
+  if (autoSave.checked && confidence >= 0.45) {
+    setFormStatus("Read complete. Auto-saving.", true);
+    await saveScan();
+    return;
+  }
+
+  setFormStatus("Ready to save.", true);
 }
 
 function clearPhoto() {
@@ -169,7 +176,7 @@ function clearPhoto() {
   photoPlaceholder.classList.remove("hidden");
   extractPhoto.disabled = true;
   extractPhoto.classList.add("hidden");
-  supportStatus.textContent = "Photo mode";
+  supportStatus.textContent = "Ready";
 }
 
 function readCompressedImage(file) {
@@ -202,9 +209,15 @@ function updateValidation() {
   };
   const errors = getValidationErrors(payload);
 
-  submitScan.disabled = errors.length > 0;
+  submitScan.disabled = errors.length > 0 || state.saving;
+
+  if (!state.imageDataUrl && errors.length > 0) {
+    setFormStatus("Take a photo to start.", false);
+    return;
+  }
+
   setFormStatus(
-    errors.length > 0 ? errors.join(" ") : "Ready to save.",
+    errors.length > 0 ? errors.join(" ") : autoSave.checked ? "Auto-save is on." : "Ready to save.",
     errors.length === 0
   );
 }
@@ -219,39 +232,4 @@ function getValidationErrors(payload) {
 function setFormStatus(message, ready) {
   formStatus.textContent = message;
   formStatus.classList.toggle("ready", ready);
-}
-
-function renderHistory() {
-  historyList.innerHTML = "";
-
-  if (state.history.length === 0) {
-    const item = document.createElement("li");
-    item.className = "history-item";
-    item.innerHTML = "<strong>No scans</strong><span>Saved switch labels will appear here.</span>";
-    historyList.append(item);
-    return;
-  }
-
-  state.history.forEach((scan) => {
-    const item = document.createElement("li");
-    item.className = "history-item";
-    item.innerHTML = `
-      <strong>${escapeHtml(scan.serialNumber)}</strong>
-      <span>${escapeHtml(scan.modelNumber)} &middot; ${new Date(scan.timestamp).toLocaleTimeString()}</span>
-    `;
-    historyList.append(item);
-  });
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => {
-    const entities = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    };
-    return entities[character];
-  });
 }

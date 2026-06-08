@@ -1,19 +1,14 @@
 :root {
   color-scheme: dark;
   --bg: #0b0f15;
-  --rail: #141920;
   --panel: #161b22;
-  --panel-soft: #1d2430;
   --panel-deep: #10151c;
   --line: #252c36;
   --line-strong: #2c3845;
   --text: #dce3ec;
   --muted: #8f98a6;
-  --dim: #5f6876;
   --accent: #6bd4c2;
-  --accent-deep: #193a38;
   --accent-line: #4eb7a9;
-  --danger: #ff625c;
   --warning: #f4bf5f;
   --field: #0f141b;
 }
@@ -40,26 +35,29 @@ button {
   cursor: pointer;
 }
 
-.station-shell {
+.app-shell {
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  min-height: 100vh;
-  background:
-    linear-gradient(90deg, rgba(107, 212, 194, 0.05), transparent 34%),
-    var(--bg);
+  gap: 16px;
+  width: min(980px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 18px 0;
 }
 
-.side-rail {
-  border-right: 1px solid var(--line);
-  background: var(--rail);
-  padding: 24px 20px;
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #151a21;
+  padding: 16px;
 }
 
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 34px;
+  gap: 12px;
 }
 
 .brand-mark {
@@ -73,73 +71,25 @@ button {
   font-weight: 900;
 }
 
-.brand-lockup strong {
-  display: block;
-  color: var(--text);
-  font-size: 1.02rem;
-}
-
-.brand-lockup span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.rail-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.rail-item {
-  border-radius: 7px;
-  color: var(--muted);
-  font-weight: 800;
-  padding: 13px 14px;
-}
-
-.rail-item.active {
-  background: rgba(107, 212, 194, 0.13);
-  color: var(--accent);
-}
-
-.app-shell {
-  display: grid;
-  gap: 16px;
-  padding: 22px 32px 28px;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  border-bottom: 1px solid var(--line);
-  margin: -22px -32px 4px;
-  padding: 22px 32px;
-  background: #151a21;
-}
-
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1,
-h2,
-.subhead {
+h2 {
   margin: 0;
   letter-spacing: 0;
 }
 
 h1 {
   color: var(--text);
-  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  font-size: clamp(1.3rem, 4vw, 1.85rem);
   line-height: 1.05;
 }
 
@@ -147,15 +97,7 @@ h2 {
   font-size: 1.08rem;
 }
 
-.subhead {
-  color: var(--muted);
-  font-size: 0.94rem;
-  font-weight: 700;
-  margin-top: 6px;
-}
-
-.status-pill,
-.panel-chip {
+.status-pill {
   flex: 0 0 auto;
   border: 1px solid var(--accent-line);
   border-radius: 999px;
@@ -167,29 +109,43 @@ h2 {
   white-space: nowrap;
 }
 
-.scanner-panel,
-.history-panel {
+.scanner-panel {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--panel);
 }
 
-.panel-heading,
-.section-heading {
+.panel-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 20px;
+  padding: 16px 18px;
+}
+
+.toggle-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-transform: none;
+}
+
+.toggle-control input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--accent);
 }
 
 .station-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(320px, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(300px, 1fr);
+  gap: 20px;
   border-top: 1px solid var(--line);
-  padding: 20px;
+  padding: 18px;
 }
 
 .photo-frame {
@@ -258,7 +214,7 @@ h2 {
 .file-button,
 .submit-button {
   display: grid;
-  min-height: 48px;
+  min-height: 50px;
   place-items: center;
   border-radius: 7px;
   background: var(--accent);
@@ -329,62 +285,24 @@ input:focus {
   display: none;
 }
 
-.history-list {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.history-item {
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-  padding: 14px 20px;
-}
-
-.history-item strong {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--text);
-}
-
-.history-item span {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.86rem;
-}
-
-@media (max-width: 900px) {
-  .station-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .side-rail {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 14px 16px;
-  }
-
-  .rail-nav {
-    display: none;
-  }
-
-  .brand-lockup {
-    margin-bottom: 0;
-  }
-
+@media (max-width: 760px) {
   .app-shell {
-    padding: 12px;
+    width: min(100% - 16px, 560px);
+    padding: 8px 0;
   }
 
   .topbar {
     display: grid;
-    margin: -12px -12px 8px;
-    padding: 16px 12px;
+    padding: 14px;
   }
 
   .station-grid {
     grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    display: grid;
   }
 }

@@ -7,84 +7,62 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <div class="station-shell">
-      <aside class="side-rail" aria-label="Station">
+    <main class="app-shell">
+      <header class="topbar">
         <div class="brand-lockup">
           <div class="brand-mark">M</div>
           <div>
-            <strong>Micas Inventory</strong>
-            <span>Hardware Control</span>
+            <p class="eyebrow">Micas Inventory</p>
+            <h1 id="page-title">Switch Scan Station</h1>
           </div>
         </div>
+        <span class="status-pill" id="supportStatus">Ready</span>
+      </header>
 
-        <nav class="rail-nav" aria-label="Station sections">
-          <span class="rail-item active">Scan station</span>
-          <span class="rail-item">Switch labels</span>
-        </nav>
-      </aside>
+      <section class="scanner-panel" aria-labelledby="page-title">
+        <div class="panel-heading">
+          <h2>Scan label</h2>
+          <label class="toggle-control">
+            <input id="autoSave" type="checkbox" checked>
+            <span>Auto-save</span>
+          </label>
+        </div>
 
-      <main class="app-shell">
-        <header class="topbar">
+        <div class="station-grid">
           <div>
-            <p class="eyebrow">Switches</p>
-            <h1 id="page-title">Hardware scan station</h1>
-            <p class="subhead">Capture model and serial labels for Micas network equipment.</p>
-          </div>
-          <span class="status-pill" id="supportStatus">Photo mode</span>
-        </header>
-
-        <section class="scanner-panel" aria-labelledby="page-title">
-          <div class="panel-heading">
-            <h2>Scan label</h2>
-            <span class="panel-chip">Micas switches</span>
-          </div>
-
-          <div class="station-grid">
-            <div>
-              <div class="photo-frame">
-                <img id="photoPreview" alt="Selected inventory label preview">
-                <div class="photo-placeholder" id="photoPlaceholder">
-                  <strong>Ready</strong>
-                  <span>Photograph the switch label.</span>
-                </div>
-              </div>
-
-              <div class="photo-actions">
-                <label class="file-button" for="labelPhoto">Scan Label</label>
-                <input id="labelPhoto" type="file" accept="image/*" capture="environment">
-                <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
+            <div class="photo-frame">
+              <img id="photoPreview" alt="Selected inventory label preview">
+              <div class="photo-placeholder" id="photoPlaceholder">
+                <strong>Ready</strong>
+                <span>Take a clear photo of the switch label.</span>
               </div>
             </div>
 
-            <form id="scanForm" class="scan-form">
-              <label>
-                Model number
-                <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">
-              </label>
-
-              <label>
-                Serial number
-                <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
-              </label>
-
-              <div class="form-status" id="formStatus" role="status">Scan or enter both fields before submitting.</div>
-
-              <button class="submit-button" id="submitScan" type="submit" disabled>Save Scan</button>
-            </form>
-          </div>
-        </section>
-
-        <section class="history-panel" aria-labelledby="history-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Session</p>
-              <h2 id="history-title">Scans</h2>
+            <div class="photo-actions">
+              <label class="file-button" for="labelPhoto">Scan Label</label>
+              <input id="labelPhoto" type="file" accept="image/*" capture="environment">
+              <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
             </div>
           </div>
-          <ul class="history-list" id="historyList"></ul>
-        </section>
-      </main>
-    </div>
+
+          <form id="scanForm" class="scan-form">
+            <label>
+              Model number
+              <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">
+            </label>
+
+            <label>
+              Serial number
+              <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
+            </label>
+
+            <div class="form-status" id="formStatus" role="status">Take a photo to start.</div>
+
+            <button class="submit-button" id="submitScan" type="submit" disabled>Save Scan</button>
+          </form>
+        </div>
+      </section>
+    </main>
 
     <script src="/app.js"></script>
   </body>
