@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const fs = require("fs");
+const https = require("https");
 const http = require("http");
 const path = require("path");
 
@@ -113,7 +114,7 @@ function readJson(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      if (body.length > 1000000) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -173,7 +174,7 @@ async function appendScanToSheet(scan) {
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/` +
     `${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
-  const response = await fetch(url, {
+  const response = await requestJson(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -192,8 +193,8 @@ async function appendScanToSheet(scan) {
     })
   });
 
-  if (!response.ok) {
-    const message = await response.text();
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const message = response.body;
     throw new Error(`Google Sheets append failed: ${message}`);
   }
 }
@@ -219,10 +220,10 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
   const signature = crypto
     .createSign("RSA-SHA256")
     .update(unsignedJwt)
-    .sign(privateKey, "base64url");
-  const assertion = `${unsignedJwt}.${signature}`;
+    .sign(privateKey, "base64");
+  const assertion = `${unsignedJwt}.${base64ToBase64Url(signature)}`;
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await requestJson("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded"
@@ -233,17 +234,65 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
     })
   });
 
-  if (!response.ok) {
-    const message = await response.text();
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const message = response.body;
     throw new Error(`Google token request failed: ${message}`);
   }
 
-  const data = await response.json();
+  const data = JSON.parse(response.body);
   return data.access_token;
 }
 
 function base64UrlEncode(value) {
-  return Buffer.from(value).toString("base64url");
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function base64ToBase64Url(value) {
+  return value
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function requestJson(url, options) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const body = options.body || "";
+    const request = https.request(
+      {
+        method: options.method || "GET",
+        hostname: parsedUrl.hostname,
+        path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        headers: Object.assign(
+          {
+            "Content-Length": Buffer.byteLength(body)
+          },
+          options.headers || {}
+        )
+      },
+      (response) => {
+        let responseBody = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        response.on("end", () => {
+          resolve({
+            statusCode: response.statusCode,
+            body: responseBody
+          });
+        });
+      }
+    );
+
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
 }
 
 function sendJson(res, statusCode, payload) {
