@@ -1,10 +1,10 @@
 # Automatic Scanner
 
-Automatic Scanner is a phone-friendly inventory scanning app for operations teams. It helps Sean capture model numbers and serial numbers from product labels, validates each scan before it is saved, and sends clean rows to Google Sheets.
+Automatic Scanner is a phone-friendly inventory scanning app for operations teams. It helps Mr. Sean capture model and serial numbers from product labels, validates each scan before saving, and sends clean rows to Google Sheets.
 
 ## What It Solves
 
-- Prevents blank spreadsheet rows from missed manual scans.
+- Prevents blank spreadsheet rows from being missed in manual scans.
 - Captures both model number and serial number in the same workflow.
 - Prompts immediately when a required field is missing.
 - Sends confirmed scan records directly to Google Sheets.
