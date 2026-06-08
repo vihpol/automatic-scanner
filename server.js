@@ -388,10 +388,17 @@ function validateScan(scan) {
 }
 
 async function appendScanToSheet(scan) {
+  const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
+  const appsScriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET || "";
   const sheetId = process.env.GOOGLE_SHEET_ID;
   const tab = process.env.GOOGLE_SHEET_TAB || "Scans";
   const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+  if (appsScriptUrl) {
+    await appendScanWithAppsScript(appsScriptUrl, appsScriptSecret, scan);
+    return;
+  }
 
   if (!sheetId || !serviceAccountEmail || !privateKey) {
     console.log("Google Sheets is not configured. Scan accepted locally:", scan);
@@ -426,6 +433,38 @@ async function appendScanToSheet(scan) {
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const message = response.body;
     throw new Error(`Google Sheets append failed: ${message}`);
+  }
+}
+
+async function appendScanWithAppsScript(url, secret, scan) {
+  const response = await requestJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      secret,
+      timestamp: scan.timestamp,
+      modelNumber: scan.modelNumber,
+      serialNumber: scan.serialNumber,
+      notes: scan.notes,
+      source: scan.source
+    })
+  });
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(`Apps Script append failed: ${response.body}`);
+  }
+
+  let data;
+  try {
+    data = JSON.parse(response.body);
+  } catch (error) {
+    throw new Error(`Apps Script returned invalid JSON: ${response.body}`);
+  }
+
+  if (!data.ok) {
+    throw new Error(data.error || "Apps Script append failed.");
   }
 }
 
@@ -488,8 +527,9 @@ function base64ToBase64Url(value) {
     .replace(/=+$/, "");
 }
 
-function requestJson(url, options) {
+function requestJson(url, options, redirectCount) {
   return new Promise((resolve, reject) => {
+    const redirects = redirectCount || 0;
     const parsedUrl = new URL(url);
     const body = options.body ? String(options.body) : "";
     const request = https.request(
@@ -511,6 +551,17 @@ function requestJson(url, options) {
           responseBody += chunk;
         });
         response.on("end", () => {
+          if (
+            response.statusCode >= 300 &&
+            response.statusCode < 400 &&
+            response.headers.location &&
+            redirects < 5
+          ) {
+            const nextUrl = new URL(response.headers.location, url).toString();
+            requestJson(nextUrl, options, redirects + 1).then(resolve, reject);
+            return;
+          }
+
           resolve({
             statusCode: response.statusCode,
             body: responseBody

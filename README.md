@@ -8,7 +8,7 @@ Automatic Scanner is a phone-friendly Micas switch scan station. It lets Mr. Sea
 - Captures both model number and serial number from one label photo.
 - Prompts immediately when a required field is missing.
 - Sends confirmed scan records directly to Google Sheets.
-- Keeps a local session history so the operator can review recent scans.
+- Supports auto-save for rapid scan-station use.
 
 ## Project Structure
 
@@ -18,6 +18,8 @@ automatic-scanner/
     app.js
     index.html
     styles.css
+  google-apps-script/
+    Code.gs
   .env.example
   .gitignore
   package.json
@@ -25,26 +27,32 @@ automatic-scanner/
   server.js
 ```
 
-## Google Sheets Setup
+## Google Sheets Setup With Apps Script
 
-1. Create a Google Cloud service account.
-2. Enable the Google Sheets API for the project.
-3. Create a service account key in JSON format.
-4. Share the target Google Sheet with the service account email as an editor.
-5. Copy `.env.example` to `.env`.
-6. Fill in:
+1. Create a Google Sheet.
+2. Rename the first tab to `Scans`.
+3. Open `Extensions > Apps Script`.
+4. Paste the contents of `google-apps-script/Code.gs`.
+5. Change `SHARED_SECRET` in the script to a simple private value.
+6. Click `Deploy > New deployment`.
+7. Choose `Web app`.
+8. Set `Execute as` to `Me`.
+9. Set `Who has access` to `Anyone`.
+10. Deploy and copy the web app URL.
+11. Copy `.env.example` to `.env`.
+12. Fill in:
    - `OPENAI_API_KEY` optional, for higher-accuracy vision extraction
    - `OPENAI_MODEL` optional, defaults to `gpt-4.1-mini`
-   - `GOOGLE_SHEET_ID`
-   - `GOOGLE_SHEET_TAB`
-   - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
-   - `GOOGLE_PRIVATE_KEY`
+   - `GOOGLE_APPS_SCRIPT_URL`
+   - `GOOGLE_APPS_SCRIPT_SECRET`
 
 The sheet tab should have this header row:
 
 ```text
 Timestamp | Model Number | Serial Number | Notes | Source
 ```
+
+The old service-account Google Sheets setup is still supported, but Apps Script is easier for this scan station.
 
 ## Run Locally
 
