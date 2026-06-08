@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Automatic Scanner</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="scanner-panel" aria-labelledby="page-title">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Inventory intake</p>
+            <h1 id="page-title">Automatic Scanner</h1>
+          </div>
+          <span class="status-pill" id="supportStatus">Checking camera</span>
+        </div>
+
+        <div class="scan-mode" role="group" aria-label="Scan target">
+          <button class="mode-button active" type="button" data-scan-target="model">Model</button>
+          <button class="mode-button" type="button" data-scan-target="serial">Serial</button>
+        </div>
+
+        <div class="camera-frame">
+          <video id="camera" autoplay muted playsinline></video>
+          <div class="scan-line" aria-hidden="true"></div>
+        </div>
+
+        <div class="camera-actions">
+          <button class="primary-button" id="startCamera" type="button">Start Camera</button>
+          <button class="secondary-button" id="stopCamera" type="button">Stop</button>
+        </div>
+
+        <form id="scanForm" class="scan-form">
+          <label>
+            Model number
+            <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">
+          </label>
+
+          <label>
+            Serial number
+            <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
+          </label>
+
+          <label>
+            Notes
+            <textarea id="notes" name="notes" rows="3" placeholder="Optional condition, location, or batch note"></textarea>
+          </label>
+
+          <div class="form-status" id="formStatus" role="status">Scan or enter both fields before submitting.</div>
+
+          <button class="submit-button" id="submitScan" type="submit" disabled>Send to Google Sheets</button>
+        </form>
+      </section>
+
+      <section class="history-panel" aria-labelledby="history-title">
+        <div class="section-heading">
+          <p class="eyebrow">Session</p>
+          <h2 id="history-title">Recent scans</h2>
+        </div>
+        <ul class="history-list" id="historyList"></ul>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

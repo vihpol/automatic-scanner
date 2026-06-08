@@ -1,0 +1,21 @@
+{
+  "name": "automatic-scanner",
+  "version": "1.0.0",
+  "description": "Phone-based inventory scanner that captures model and serial numbers and sends validated rows to Google Sheets.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "keywords": [
+    "inventory",
+    "scanner",
+    "barcode",
+    "google-sheets"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
