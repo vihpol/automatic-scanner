@@ -105,7 +105,7 @@ button {
 
 .app-shell {
   display: grid;
-  gap: 22px;
+  gap: 16px;
   padding: 22px 32px 28px;
 }
 
@@ -115,7 +115,7 @@ button {
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--line);
-  margin: -22px -32px 12px;
+  margin: -22px -32px 4px;
   padding: 22px 32px;
   background: #151a21;
 }
@@ -165,43 +165,6 @@ h2 {
   font-weight: 900;
   padding: 9px 14px;
   white-space: nowrap;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.metric-card {
-  min-height: 96px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 18px;
-}
-
-.metric-card.active {
-  border-color: rgba(107, 212, 194, 0.45);
-  background: rgba(107, 212, 194, 0.08);
-}
-
-.metric-card span {
-  display: block;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.metric-card strong {
-  display: block;
-  color: var(--accent);
-  font-size: 2.05rem;
-  line-height: 1;
-  margin-top: 12px;
 }
 
 .scanner-panel,
@@ -421,17 +384,7 @@ input:focus {
     padding: 16px 12px;
   }
 
-  .metrics-grid,
   .station-grid {
     grid-template-columns: 1fr;
-  }
-
-  .metrics-grid {
-    gap: 10px;
-  }
-
-  .metric-card {
-    min-height: 78px;
-    padding: 14px;
   }
 }
