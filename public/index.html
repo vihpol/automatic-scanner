@@ -7,55 +7,99 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="app-shell">
-      <section class="scanner-panel" aria-labelledby="page-title">
-        <div class="topbar">
+    <div class="station-shell">
+      <aside class="side-rail" aria-label="Station">
+        <div class="brand-lockup">
+          <div class="brand-mark">M</div>
           <div>
-            <p class="eyebrow">Micas Networks</p>
-            <h1 id="page-title">Switch Scan Station</h1>
+            <strong>Micas Inventory</strong>
+            <span>Hardware Control</span>
+          </div>
+        </div>
+
+        <nav class="rail-nav" aria-label="Station sections">
+          <span class="rail-item active">Scan station</span>
+          <span class="rail-item">Switch labels</span>
+        </nav>
+      </aside>
+
+      <main class="app-shell">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Switches</p>
+            <h1 id="page-title">Hardware scan station</h1>
+            <p class="subhead">Capture model and serial labels for Micas network equipment.</p>
           </div>
           <span class="status-pill" id="supportStatus">Photo mode</span>
-        </div>
+        </header>
 
-        <div class="photo-frame">
-          <img id="photoPreview" alt="Selected inventory label preview">
-          <div class="photo-placeholder" id="photoPlaceholder">
+        <section class="metrics-grid" aria-label="Scan state">
+          <div class="metric-card active">
+            <span>Station</span>
             <strong>Ready</strong>
-            <span>Photograph the switch label.</span>
           </div>
-        </div>
+          <div class="metric-card">
+            <span>Mode</span>
+            <strong>OCR</strong>
+          </div>
+          <div class="metric-card">
+            <span>Output</span>
+            <strong>Sheets</strong>
+          </div>
+        </section>
 
-        <div class="photo-actions">
-          <label class="file-button" for="labelPhoto">Scan Label</label>
-          <input id="labelPhoto" type="file" accept="image/*" capture="environment">
-          <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
-        </div>
+        <section class="scanner-panel" aria-labelledby="page-title">
+          <div class="panel-heading">
+            <h2>Scan label</h2>
+            <span class="panel-chip">Micas switches</span>
+          </div>
 
-        <form id="scanForm" class="scan-form">
-          <label>
-            Model number
-            <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">
-          </label>
+          <div class="station-grid">
+            <div>
+              <div class="photo-frame">
+                <img id="photoPreview" alt="Selected inventory label preview">
+                <div class="photo-placeholder" id="photoPlaceholder">
+                  <strong>Ready</strong>
+                  <span>Photograph the switch label.</span>
+                </div>
+              </div>
 
-          <label>
-            Serial number
-            <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
-          </label>
+              <div class="photo-actions">
+                <label class="file-button" for="labelPhoto">Scan Label</label>
+                <input id="labelPhoto" type="file" accept="image/*" capture="environment">
+                <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
+              </div>
+            </div>
 
-          <div class="form-status" id="formStatus" role="status">Scan or enter both fields before submitting.</div>
+            <form id="scanForm" class="scan-form">
+              <label>
+                Model number
+                <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">
+              </label>
 
-          <button class="submit-button" id="submitScan" type="submit" disabled>Save Scan</button>
-        </form>
-      </section>
+              <label>
+                Serial number
+                <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
+              </label>
 
-      <section class="history-panel" aria-labelledby="history-title">
-        <div class="section-heading">
-          <p class="eyebrow">Session</p>
-          <h2 id="history-title">Scans</h2>
-        </div>
-        <ul class="history-list" id="historyList"></ul>
-      </section>
-    </main>
+              <div class="form-status" id="formStatus" role="status">Scan or enter both fields before submitting.</div>
+
+              <button class="submit-button" id="submitScan" type="submit" disabled>Save Scan</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="history-panel" aria-labelledby="history-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Session</p>
+              <h2 id="history-title">Scans</h2>
+            </div>
+          </div>
+          <ul class="history-list" id="historyList"></ul>
+        </section>
+      </main>
+    </div>
 
     <script src="/app.js"></script>
   </body>
