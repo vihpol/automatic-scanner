@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Automatic Scanner</title>
+    <title>Micas Scan Station</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -11,8 +11,8 @@
       <section class="scanner-panel" aria-labelledby="page-title">
         <div class="topbar">
           <div>
-            <p class="eyebrow">Inventory intake</p>
-            <h1 id="page-title">Automatic Scanner</h1>
+            <p class="eyebrow">Micas Networks</p>
+            <h1 id="page-title">Switch Scan Station</h1>
           </div>
           <span class="status-pill" id="supportStatus">Photo mode</span>
         </div>
@@ -20,15 +20,15 @@
         <div class="photo-frame">
           <img id="photoPreview" alt="Selected inventory label preview">
           <div class="photo-placeholder" id="photoPlaceholder">
-            <strong>No photo selected</strong>
-            <span>Take a clear picture of the label with both model and serial visible.</span>
+            <strong>Ready</strong>
+            <span>Photograph the switch label.</span>
           </div>
         </div>
 
         <div class="photo-actions">
-          <label class="file-button" for="labelPhoto">Take Photo</label>
+          <label class="file-button" for="labelPhoto">Scan Label</label>
           <input id="labelPhoto" type="file" accept="image/*" capture="environment">
-          <button class="primary-button" id="extractPhoto" type="button" disabled>Extract Fields</button>
+          <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
         </div>
 
         <form id="scanForm" class="scan-form">
@@ -42,21 +42,16 @@
             <input id="serialNumber" name="serialNumber" autocomplete="off" placeholder="Example: GT8F05962167C">
           </label>
 
-          <label>
-            Notes
-            <textarea id="notes" name="notes" rows="3" placeholder="Optional condition, location, or batch note"></textarea>
-          </label>
-
           <div class="form-status" id="formStatus" role="status">Scan or enter both fields before submitting.</div>
 
-          <button class="submit-button" id="submitScan" type="submit" disabled>Send to Google Sheets</button>
+          <button class="submit-button" id="submitScan" type="submit" disabled>Save Scan</button>
         </form>
       </section>
 
       <section class="history-panel" aria-labelledby="history-title">
         <div class="section-heading">
           <p class="eyebrow">Session</p>
-          <h2 id="history-title">Recent scans</h2>
+          <h2 id="history-title">Scans</h2>
         </div>
         <ul class="history-list" id="historyList"></ul>
       </section>

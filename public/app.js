@@ -13,7 +13,6 @@ const submitScan = document.querySelector("#submitScan");
 const formStatus = document.querySelector("#formStatus");
 const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
-const notes = document.querySelector("#notes");
 const historyList = document.querySelector("#historyList");
 
 initialize();
@@ -44,8 +43,8 @@ async function handlePhotoSelection(event) {
     photoPreview.classList.add("visible");
     photoPlaceholder.classList.add("hidden");
     extractPhoto.disabled = false;
-    supportStatus.textContent = "Photo ready";
-    setFormStatus("Photo selected. Extract fields when ready.", true);
+    extractPhoto.classList.add("hidden");
+    await extractFromPhoto();
   } catch (error) {
     console.error(error);
     setFormStatus("Unable to read the photo.", false);
@@ -59,8 +58,9 @@ async function extractFromPhoto() {
   }
 
   extractPhoto.disabled = true;
-  supportStatus.textContent = "Processing photo";
-  setFormStatus("Extracting model and serial from the photo.", true);
+  extractPhoto.classList.add("hidden");
+  supportStatus.textContent = "Reading label";
+  setFormStatus("Reading model and serial.", true);
 
   try {
     const response = await fetch("/api/extract", {
@@ -81,8 +81,9 @@ async function extractFromPhoto() {
     applyExtraction(result.extraction);
   } catch (error) {
     console.error(error);
-    setFormStatus(error.message || "Unable to extract fields from the photo.", false);
-    supportStatus.textContent = "Extraction failed";
+    setFormStatus("OCR failed. Retake photo or enter fields.", false);
+    supportStatus.textContent = "Needs review";
+    extractPhoto.classList.remove("hidden");
   } finally {
     extractPhoto.disabled = false;
   }
@@ -94,7 +95,7 @@ async function submitCurrentScan(event) {
   const payload = {
     modelNumber: modelNumber.value.trim(),
     serialNumber: serialNumber.value.trim(),
-    notes: notes.value.trim(),
+    notes: "",
     source: "phone-photo"
   };
 
@@ -126,7 +127,6 @@ async function submitCurrentScan(event) {
     state.history = state.history.slice(0, 8);
     renderHistory();
     serialNumber.value = "";
-    notes.value = "";
     clearPhoto();
     saved = true;
     updateValidation();
@@ -144,12 +144,8 @@ function applyExtraction(extraction) {
   modelNumber.value = extraction.modelNumber || "";
   serialNumber.value = extraction.serialNumber || "";
 
-  if (extraction.notes) {
-    notes.value = extraction.notes;
-  }
-
   const confidence = Math.round(Number(extraction.confidence || 0) * 100);
-  supportStatus.textContent = confidence ? `${confidence}% confidence` : "Extraction complete";
+  supportStatus.textContent = confidence ? `${confidence}% read` : "Read complete";
   updateValidation();
 
   const missing = getValidationErrors({
@@ -158,9 +154,10 @@ function applyExtraction(extraction) {
   });
 
   if (missing.length > 0) {
-    setFormStatus(`Check the photo or type missing fields. ${missing.join(" ")}`, false);
+    setFormStatus(`Review needed. ${missing.join(" ")}`, false);
+    extractPhoto.classList.remove("hidden");
   } else {
-    setFormStatus("Fields extracted. Review them, then send to Google Sheets.", true);
+    setFormStatus("Ready to save.", true);
   }
 }
 
@@ -171,6 +168,7 @@ function clearPhoto() {
   photoPreview.classList.remove("visible");
   photoPlaceholder.classList.remove("hidden");
   extractPhoto.disabled = true;
+  extractPhoto.classList.add("hidden");
   supportStatus.textContent = "Photo mode";
 }
 
@@ -206,7 +204,7 @@ function updateValidation() {
 
   submitScan.disabled = errors.length > 0;
   setFormStatus(
-    errors.length > 0 ? errors.join(" ") : "Ready to send to Google Sheets.",
+    errors.length > 0 ? errors.join(" ") : "Ready to save.",
     errors.length === 0
   );
 }
@@ -229,7 +227,7 @@ function renderHistory() {
   if (state.history.length === 0) {
     const item = document.createElement("li");
     item.className = "history-item";
-    item.innerHTML = "<strong>No scans yet</strong><span>Validated scans will appear here.</span>";
+    item.innerHTML = "<strong>No scans</strong><span>Saved switch labels will appear here.</span>";
     historyList.append(item);
     return;
   }

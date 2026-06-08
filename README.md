@@ -1,6 +1,6 @@
 # Automatic Scanner
 
-Automatic Scanner is a phone-friendly inventory scanning app for operations teams. It lets Mr. Sean take a phone photo of a product label, extracts model and serial numbers, validates each scan before saving, and sends clean rows to Google Sheets.
+Automatic Scanner is a phone-friendly Micas switch scan station. It lets Mr. Sean take a phone photo of a switch label, extracts model and serial numbers, validates each scan before saving, and sends clean rows to Google Sheets.
 
 ## What It Solves
 
@@ -66,16 +66,16 @@ http://192.168.1.20:3000
 
 For phone testing, set `HOST=0.0.0.0` in `.env` so other devices on the network can reach the server.
 
-The photo picker works on mobile browsers without embedding a live camera stream in the page. For the best phone experience, open the app from the phone and tap **Take Photo**.
+The photo picker works on mobile browsers without embedding a live camera stream in the page. For the best phone experience, open the app from the phone and tap **Scan Label**.
 
 ## How the Scanner Works
 
-1. Sean taps **Take Photo** on his phone.
+1. Sean taps **Scan Label** on his phone.
 2. The phone camera captures a clear label photo.
 3. The browser compresses the photo and sends it to `/api/extract`.
 4. The backend extracts text with local Tesseract OCR. If `OPENAI_API_KEY` is configured, it uses OpenAI vision extraction instead.
 5. The extracted model number and serial number are filled into the form.
-6. Sean reviews or edits the fields.
+6. Sean reviews or edits the model and serial fields.
 7. The app only enables submission when both model and serial are present.
 8. The backend appends the validated row to Google Sheets.
 
