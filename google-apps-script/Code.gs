@@ -1,31 +1,46 @@
 const SHEET_NAME = "Scans";
-const SHARED_SECRET = "change-this-password";
+const SHARED_SECRET = "scanned";
 const DEFAULT_SPREADSHEET_ID = "";
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents || "{}");
-
-    if (SHARED_SECRET && payload.secret !== SHARED_SECRET) {
-      return jsonResponse({
-        ok: false,
-        error: "Unauthorized"
-      });
-    }
-
-    const spreadsheet = getTargetSpreadsheet(payload.sheetId);
-    const sheet = getOrCreateSheet(spreadsheet, payload.tab || SHEET_NAME);
-    appendScanByModel(sheet, payload.modelNumber, payload.serialNumber);
-
-    return jsonResponse({
-      ok: true
-    });
+    return handlePayload(JSON.parse(e.postData.contents || "{}"));
   } catch (error) {
     return jsonResponse({
       ok: false,
       error: error.message
     });
   }
+}
+
+function doGet(e) {
+  try {
+    return handlePayload((e && e.parameter) || {});
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: error.message
+    });
+  }
+}
+
+function handlePayload(payload) {
+  if (SHARED_SECRET && payload.secret !== SHARED_SECRET) {
+    return jsonResponse({
+      ok: false,
+      error: "Unauthorized"
+    });
+  }
+
+  const spreadsheet = getTargetSpreadsheet(payload.sheetId);
+  const sheet = getOrCreateSheet(spreadsheet, payload.tab || SHEET_NAME);
+  appendScanByModel(sheet, payload.modelNumber, payload.serialNumber);
+
+  return jsonResponse({
+    ok: true,
+    modelNumber: cleanValue(payload.modelNumber),
+    serialNumber: cleanValue(payload.serialNumber)
+  });
 }
 
 function getTargetSpreadsheet(sheetId) {

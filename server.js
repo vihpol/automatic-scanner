@@ -552,13 +552,13 @@ function validateScan(scan) {
 async function appendScanToSheet(scan) {
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const appsScriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET || "";
-  const sheetId = scan.sheetId || process.env.GOOGLE_SHEET_ID;
+  const sheetId = scan.sheetId || cleanSheetId(process.env.GOOGLE_SHEET_ID || "");
   const tab = scan.sheetTab || process.env.GOOGLE_SHEET_TAB || "Scans";
   const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
   if (appsScriptUrl) {
-    await appendScanWithAppsScript(appsScriptUrl, appsScriptSecret, {
+    await appendScanWithAppsScriptBlocking(appsScriptUrl, appsScriptSecret, {
       sheetId,
       tab,
       scan
@@ -604,6 +604,7 @@ async function appendScanToSheet(scan) {
 
 function cleanSheetId(value) {
   const text = String(value || "").trim();
+  if (/^(?:your_google_sheet_id|your[_-]?sheet[_-]?id)$/i.test(text)) return "";
   const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return (match ? match[1] : text).trim();
 }
@@ -657,26 +658,21 @@ function postJsonInBackground(url, payload) {
 
 async function appendScanWithAppsScriptBlocking(url, secret, options) {
   const scan = options.scan;
-  const response = await requestJson(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      secret,
-      sheetId: options.sheetId || "",
-      tab: options.tab || "Scans",
-      timestamp: scan.timestamp,
-      modelNumber: scan.modelNumber,
-      serialNumber: scan.serialNumber,
-      notes: scan.notes,
-      source: scan.source
-    })
-  }, 0, false);
-
-  if (response.statusCode >= 300 && response.statusCode < 400) {
-    return;
-  }
+  const params = new URLSearchParams({
+    secret,
+    sheetId: options.sheetId || "",
+    tab: options.tab || "Scans",
+    timestamp: scan.timestamp,
+    modelNumber: scan.modelNumber,
+    serialNumber: scan.serialNumber,
+    notes: scan.notes,
+    source: scan.source
+  });
+  const separator = url.includes("?") ? "&" : "?";
+  const response = await requestJson(`${url}${separator}${params.toString()}`, {
+    method: "GET",
+    headers: {}
+  });
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`Apps Script append failed: ${response.body}`);
@@ -786,13 +782,7 @@ function requestJson(url, options, redirectCount, followRedirects) {
             redirects < 5
           ) {
             const nextUrl = new URL(response.headers.location, url).toString();
-            const nextOptions =
-              response.statusCode === 302 || response.statusCode === 303
-                ? {
-                    method: "GET",
-                    headers: {}
-                  }
-                : options;
+            const nextOptions = options;
             requestJson(nextUrl, nextOptions, redirects + 1, shouldFollowRedirects).then(resolve, reject);
             return;
           }
