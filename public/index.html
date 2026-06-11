@@ -41,15 +41,26 @@
         <div class="station-grid">
           <div>
             <div class="photo-frame">
+              <video id="cameraPreview" playsinline muted></video>
               <img id="photoPreview" alt="Selected inventory label preview">
               <div class="photo-placeholder" id="photoPlaceholder">
                 <strong>Ready</strong>
                 <span>Fill the frame with the model and switch S/N label lines.</span>
               </div>
+              <canvas id="captureCanvas" class="hidden"></canvas>
             </div>
 
             <div class="photo-actions">
-              <label class="file-button" for="labelPhoto">Scan Label</label>
+              <button class="primary-button" id="openCamera" type="button">Open Camera</button>
+              <button class="primary-button hidden" id="capturePhoto" type="button">Take Photo</button>
+              <div class="camera-tools hidden" id="cameraTools">
+                <label class="zoom-control hidden" id="zoomControl">
+                  Zoom
+                  <input id="cameraZoom" type="range" min="1" max="1" step="0.1" value="1">
+                </label>
+                <button class="tool-button hidden" id="toggleTorch" type="button">Light</button>
+              </div>
+              <label class="file-button" for="labelPhoto">Phone Camera</label>
               <input id="labelPhoto" type="file" accept="image/*" capture="environment">
               <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry Scan</button>
             </div>

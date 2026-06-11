@@ -179,14 +179,16 @@ h2 {
   pointer-events: none;
 }
 
-.photo-frame img {
+.photo-frame img,
+.photo-frame video {
   display: none;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.photo-frame img.visible {
+.photo-frame img.visible,
+.photo-frame video.visible {
   display: block;
 }
 
@@ -219,7 +221,13 @@ h2 {
   margin-top: 12px;
 }
 
-.photo-actions input {
+.camera-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.photo-actions > input[type="file"] {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -229,7 +237,8 @@ h2 {
 
 .primary-button,
 .file-button,
-.submit-button {
+.submit-button,
+.tool-button {
   display: grid;
   min-height: 50px;
   place-items: center;
@@ -242,8 +251,23 @@ h2 {
 
 .primary-button:hover,
 .file-button:hover,
-.submit-button:hover {
+.submit-button:hover,
+.tool-button:hover,
+.tool-button.active {
   background: #83e2d3;
+}
+
+.zoom-control {
+  min-height: 50px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--field);
+  padding: 8px 12px;
+}
+
+.zoom-control input {
+  min-height: 22px;
+  padding: 0;
 }
 
 .scan-form {
@@ -315,7 +339,8 @@ input:focus {
 }
 
 .primary-button:disabled,
-.submit-button:disabled {
+.submit-button:disabled,
+.tool-button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }

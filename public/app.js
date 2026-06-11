@@ -7,6 +7,14 @@ const state = {
 
 const supportStatus = document.querySelector("#supportStatus");
 const labelPhoto = document.querySelector("#labelPhoto");
+const openCamera = document.querySelector("#openCamera");
+const capturePhoto = document.querySelector("#capturePhoto");
+const cameraPreview = document.querySelector("#cameraPreview");
+const captureCanvas = document.querySelector("#captureCanvas");
+const cameraTools = document.querySelector("#cameraTools");
+const zoomControl = document.querySelector("#zoomControl");
+const cameraZoom = document.querySelector("#cameraZoom");
+const toggleTorch = document.querySelector("#toggleTorch");
 const photoPreview = document.querySelector("#photoPreview");
 const photoPlaceholder = document.querySelector("#photoPlaceholder");
 const extractPhoto = document.querySelector("#extractPhoto");
@@ -25,6 +33,10 @@ initialize();
 
 function initialize() {
   supportStatus.textContent = "Ready";
+  openCamera.addEventListener("click", startCamera);
+  capturePhoto.addEventListener("click", captureFromCamera);
+  cameraZoom.addEventListener("input", applyCameraZoom);
+  toggleTorch.addEventListener("click", toggleCameraTorch);
   labelPhoto.addEventListener("change", handlePhotoSelection);
   extractPhoto.addEventListener("click", extractFromPhoto);
   scanForm.addEventListener("submit", submitCurrentScan);
@@ -37,6 +49,140 @@ function initialize() {
   handleRapidModeChange();
   restoreLastModel();
   updateValidation();
+}
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setFormStatus("Use Phone Camera.", false);
+    labelPhoto.click();
+    return;
+  }
+
+  try {
+    stopCamera();
+    setFormStatus("Opening camera.", true);
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 2560 },
+        height: { ideal: 1440 }
+      },
+      audio: false
+    });
+    cameraPreview.srcObject = state.cameraStream;
+    cameraPreview.classList.add("visible");
+    photoPreview.classList.remove("visible");
+    photoPlaceholder.classList.add("hidden");
+    capturePhoto.classList.remove("hidden");
+    cameraTools.classList.remove("hidden");
+    await cameraPreview.play();
+    configureCameraTools();
+    setFormStatus("Camera ready.", true);
+  } catch (error) {
+    console.error(error);
+    stopCamera();
+    setFormStatus("Use Phone Camera.", false);
+    labelPhoto.click();
+  }
+}
+
+function stopCamera() {
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach((track) => track.stop());
+  }
+  state.cameraStream = null;
+  state.cameraTrack = null;
+  state.torchOn = false;
+  cameraPreview.pause();
+  cameraPreview.removeAttribute("srcObject");
+  cameraPreview.srcObject = null;
+  cameraPreview.classList.remove("visible");
+  capturePhoto.classList.add("hidden");
+  cameraTools.classList.add("hidden");
+  zoomControl.classList.add("hidden");
+  toggleTorch.classList.add("hidden");
+  toggleTorch.classList.remove("active");
+}
+
+function configureCameraTools() {
+  const track = state.cameraStream && state.cameraStream.getVideoTracks()[0];
+  state.cameraTrack = track || null;
+  if (!track || !track.getCapabilities) return;
+
+  const capabilities = track.getCapabilities();
+  const settings = track.getSettings ? track.getSettings() : {};
+
+  if (capabilities.zoom) {
+    cameraZoom.min = capabilities.zoom.min || 1;
+    cameraZoom.max = capabilities.zoom.max || 1;
+    cameraZoom.step = capabilities.zoom.step || 0.1;
+    cameraZoom.value = settings.zoom || capabilities.zoom.min || 1;
+    zoomControl.classList.remove("hidden");
+  }
+
+  if (capabilities.torch) {
+    toggleTorch.classList.remove("hidden");
+  }
+}
+
+async function applyCameraZoom() {
+  if (!state.cameraTrack) return;
+
+  try {
+    await state.cameraTrack.applyConstraints({
+      advanced: [{ zoom: Number(cameraZoom.value) }]
+    });
+  } catch (error) {
+    console.warn("Camera zoom unavailable:", error);
+  }
+}
+
+async function toggleCameraTorch() {
+  if (!state.cameraTrack) return;
+
+  try {
+    state.torchOn = !state.torchOn;
+    await state.cameraTrack.applyConstraints({
+      advanced: [{ torch: state.torchOn }]
+    });
+    toggleTorch.classList.toggle("active", state.torchOn);
+  } catch (error) {
+    state.torchOn = false;
+    toggleTorch.classList.remove("active");
+    setFormStatus("Light unavailable on this phone.", false);
+  }
+}
+
+async function captureFromCamera() {
+  if (!cameraPreview.videoWidth || !cameraPreview.videoHeight) {
+    setFormStatus("Camera is not ready.", false);
+    return;
+  }
+
+  try {
+    if (!shouldKeepModel()) {
+      clearFieldsForNewModel();
+    }
+    setProgress(18);
+    setFormStatus("Preparing photo.", true);
+    state.imageDataUrl = createEnhancedDataUrl(
+      cameraPreview,
+      cameraPreview.videoWidth,
+      cameraPreview.videoHeight
+    );
+    photoPreview.src = state.imageDataUrl;
+    photoPreview.classList.add("visible");
+    cameraPreview.classList.remove("visible");
+    photoPlaceholder.classList.add("hidden");
+    extractPhoto.disabled = false;
+    extractPhoto.classList.add("hidden");
+    stopCamera();
+    if (await applyFastBarcodeRead()) return;
+    await extractFromPhoto();
+  } catch (error) {
+    console.error(error);
+    setFormStatus("Unable to capture photo.", false);
+  }
 }
 
 async function handlePhotoSelection(event) {
@@ -248,6 +394,9 @@ function clearPhoto() {
   labelPhoto.value = "";
   photoPreview.removeAttribute("src");
   photoPreview.classList.remove("visible");
+  if (!state.cameraStream) {
+    cameraPreview.classList.remove("visible");
+  }
   photoPlaceholder.classList.remove("hidden");
   extractPhoto.disabled = true;
   extractPhoto.classList.add("hidden");
@@ -267,19 +416,7 @@ function readPreparedImage(file) {
       const image = new Image();
       image.onload = () => {
         const maxDimension = 2200;
-        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-        const context = canvas.getContext("2d");
-        const brightness = estimateImageBrightness(image);
-        const boost = brightness < 92 ? 1.34 : brightness < 125 ? 1.18 : 1;
-        const contrast = brightness < 140 ? 1.18 : 1.08;
-        context.filter = `brightness(${boost}) contrast(${contrast}) saturate(0.9)`;
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = "high";
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.9));
+        resolve(createEnhancedDataUrl(image, image.width, image.height, maxDimension));
       };
       image.onerror = reject;
       image.src = reader.result;
@@ -287,6 +424,21 @@ function readPreparedImage(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function createEnhancedDataUrl(source, sourceWidth, sourceHeight, maxDimension = 2600) {
+  const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+  captureCanvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  captureCanvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  const context = captureCanvas.getContext("2d");
+  const brightness = estimateImageBrightness(source);
+  const boost = brightness < 70 ? 1.55 : brightness < 95 ? 1.38 : brightness < 125 ? 1.2 : 1.05;
+  const contrast = brightness < 120 ? 1.28 : 1.12;
+  context.filter = `brightness(${boost}) contrast(${contrast}) saturate(0.85)`;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, captureCanvas.width, captureCanvas.height);
+  return captureCanvas.toDataURL("image/jpeg", 0.92);
 }
 
 function estimateImageBrightness(image) {
