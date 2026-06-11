@@ -413,7 +413,7 @@ function updateValidation() {
   };
   const errors = getValidationErrors(payload);
 
-  submitScan.disabled = errors.length > 0 || state.saving;
+  submitScan.disabled = state.saving;
 
   if (!state.imageDataUrl && errors.length > 0) {
     if (rapidMode.checked && state.savedCount > 0 && payload.modelNumber && !payload.serialNumber) {

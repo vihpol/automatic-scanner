@@ -361,9 +361,11 @@ function parseInventoryText(text, knownModel = "") {
 
   const lines = getOcrLines(normalized);
   const modelNumber = knownModel || findValueFromLine(lines, /\bmodel\b/i);
-  const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*s\s*\/?\s*n\b/i);
-  const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bserial(?:\s+number|\s+no)?\b/i);
-  const serialNumber = switchSerialNumber || genericSerialNumber;
+  const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
+  const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
+  const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
+  const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
+  const serialNumber = switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby;
 
   const candidates = normalized
     .split(/[^A-Z0-9._/-]+/i)
@@ -408,13 +410,36 @@ function findValueFromLine(lines, labelPattern) {
   return "";
 }
 
+function findValueNearLabel(lines, labelPattern) {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!labelPattern.test(lines[index])) continue;
+
+    const sameLine = valueAfterLabel(lines[index], labelPattern);
+    if (sameLine) return sameLine;
+
+    for (let offset = 1; offset <= 2; offset += 1) {
+      const nextLine = lines[index + offset] || "";
+      if (looksLikeLabelLine(nextLine)) continue;
+
+      const value = bestInventoryToken(nextLine);
+      if (value) return value;
+    }
+  }
+
+  return "";
+}
+
 function valueAfterLabel(line, labelPattern) {
   const match = line.match(labelPattern);
   if (!match) return "";
 
   const afterLabel = line.slice(match.index + match[0].length);
   const afterSeparator = afterLabel.replace(/^\s*(?:number|no\.?|#|[:=-])*\s*/i, "");
-  const tokens = afterSeparator
+  return bestInventoryToken(afterSeparator);
+}
+
+function bestInventoryToken(text) {
+  const tokens = String(text || "")
     .split(/[^A-Z0-9._/-]+/i)
     .map((value) => cleanInventoryValue(value))
     .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 3);
@@ -423,12 +448,17 @@ function valueAfterLabel(line, labelPattern) {
     .sort((a, b) => scoreInventoryToken(b) - scoreInventoryToken(a))[0] || "";
 }
 
+function looksLikeLabelLine(line) {
+  return /\b(model|switch|serial|s\s*\/?\s*n|sn|mac|part|p\s*\/?\s*n|dp\s*\/?\s*n)\b/i.test(line);
+}
+
 function scoreInventoryToken(value) {
   let score = value.length;
+  if (/^GT[A-Z0-9]{8,}$/i.test(value)) score += 40;
+  if (/^3[SR][A-Z0-9]{10,}$/i.test(value)) score += 35;
+  if (/^[A-Z0-9]{12,}$/i.test(value)) score += 18;
   if (/^(?:Z|S|N|R|SW)[A-Z0-9]{1,8}[-_][A-Z0-9._/-]{2,}$/i.test(value)) score += 25;
-  if (/^GT[A-Z0-9]{8,}$/i.test(value)) score += 20;
-  if (/^3[SR][A-Z0-9]{10,}$/i.test(value)) score += 15;
-  if (/^[A-Z0-9]{12,}$/i.test(value)) score += 8;
+  if (/^(?:MODEL|NUMBER|SERIAL|SWITCH|MAC|ADDR|ADDRESS)$/i.test(value)) score -= 80;
   return score;
 }
 
