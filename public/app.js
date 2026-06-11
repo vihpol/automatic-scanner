@@ -389,7 +389,6 @@ function handleSameModelChange() {
 function handleRapidModeChange() {
   if (rapidMode.checked) {
     sameModel.checked = true;
-    autoSave.checked = true;
     restoreLastModel();
     setFormStatus("Rapid mode is on. Scan serials one after another.", true);
   }
