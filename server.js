@@ -38,8 +38,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      await appendScanToSheet(scan);
-      sendJson(res, 201, { ok: true, scan });
+      const sheet = await appendScanToSheet(scan);
+      sendJson(res, 201, { ok: true, scan, sheet });
       return;
     }
 
@@ -558,7 +558,7 @@ async function appendScanToSheet(scan) {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
   if (appsScriptUrl) {
-    await appendScanWithAppsScriptBlocking(appsScriptUrl, appsScriptSecret, {
+    return appendScanWithAppsScriptBlocking(appsScriptUrl, appsScriptSecret, {
       sheetId,
       tab,
       scan
@@ -568,7 +568,7 @@ async function appendScanToSheet(scan) {
 
   if (!sheetId || !serviceAccountEmail || !privateKey) {
     console.log("Google Sheets is not configured. Scan accepted locally:", scan);
-    return;
+    return null;
   }
 
   const token = await getGoogleAccessToken(serviceAccountEmail, privateKey);
@@ -600,6 +600,11 @@ async function appendScanToSheet(scan) {
     const message = response.body;
     throw new Error(`Google Sheets append failed: ${message}`);
   }
+
+  return {
+    tab,
+    mode: "service-account"
+  };
 }
 
 function cleanSheetId(value) {
@@ -688,6 +693,8 @@ async function appendScanWithAppsScriptBlocking(url, secret, options) {
   if (!data.ok) {
     throw new Error(data.error || "Apps Script append failed.");
   }
+
+  return data;
 }
 
 async function getGoogleAccessToken(clientEmail, privateKey) {

@@ -34,12 +34,17 @@ function handlePayload(payload) {
 
   const spreadsheet = getTargetSpreadsheet(payload.sheetId);
   const sheet = getOrCreateSheet(spreadsheet, payload.tab || SHEET_NAME);
-  appendScanByModel(sheet, payload.modelNumber, payload.serialNumber);
+  const location = appendScanByModel(sheet, payload.modelNumber, payload.serialNumber);
 
   return jsonResponse({
     ok: true,
     modelNumber: cleanValue(payload.modelNumber),
-    serialNumber: cleanValue(payload.serialNumber)
+    serialNumber: cleanValue(payload.serialNumber),
+    spreadsheetName: spreadsheet.getName(),
+    spreadsheetUrl: spreadsheet.getUrl(),
+    sheetName: sheet.getName(),
+    row: location.row,
+    column: location.column
   });
 }
 
@@ -86,6 +91,11 @@ function appendScanByModel(sheet, rawModelNumber, rawSerialNumber) {
   sheet.getRange(nextRow, column).setValue(serialNumber);
   sheet.getRange(1, column).setFontWeight("bold");
   sheet.autoResizeColumn(column);
+
+  return {
+    row: nextRow,
+    column
+  };
 }
 
 function findOrCreateModelColumn(sheet, modelNumber) {

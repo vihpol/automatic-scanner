@@ -158,7 +158,7 @@ async function saveScan() {
     clearPhoto();
     setProgress(100);
     supportStatus.textContent = rapidMode.checked ? `${state.savedCount} saved` : "Ready";
-    setFormStatus(rapidMode.checked ? "Saved. Tap Scan Label for next." : "Saved. Ready for next label.", true);
+    setFormStatus(getSavedMessage(result.sheet), true);
     setTimeout(() => setProgress(0), 900);
   } catch (error) {
     setProgress(0);
@@ -168,6 +168,18 @@ async function saveScan() {
     state.saving = false;
     updateValidation();
   }
+}
+
+function getSavedMessage(sheet) {
+  if (sheet && sheet.spreadsheetName && sheet.sheetName) {
+    return `Saved to ${sheet.spreadsheetName} / ${sheet.sheetName}.`;
+  }
+
+  if (sheet && sheet.sheetName) {
+    return `Saved to Google Sheets / ${sheet.sheetName}.`;
+  }
+
+  return rapidMode.checked ? "Saved to Google Sheets. Tap Scan Label for next." : "Saved to Google Sheets.";
 }
 
 async function applyExtraction(extraction) {
