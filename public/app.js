@@ -237,7 +237,7 @@ async function extractFromPhoto() {
       body: JSON.stringify({
         imageDataUrl: state.imageDataUrl,
         knownModel: shouldKeepModel() ? modelNumber.value.trim() : "",
-        serialOnly: shouldKeepModel()
+        serialOnly: false
       })
     });
     const result = await response.json();
@@ -329,8 +329,9 @@ function getSavedMessage(sheet) {
 }
 
 async function applyExtraction(extraction) {
-  const lockedModel = shouldKeepModel() ? modelNumber.value.trim() : "";
-  modelNumber.value = lockedModel || extraction.modelNumber || "";
+  const currentModel = modelNumber.value.trim();
+  const scannedModel = cleanScanValue(extraction.modelNumber);
+  modelNumber.value = scannedModel || currentModel;
   serialNumber.value = extraction.serialNumber || "";
 
   const confidence = Number(extraction.confidence || 0);

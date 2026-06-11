@@ -181,7 +181,7 @@ async function extractScanFromImage(imageDataUrl, options = {}) {
                   "Extract the inventory model number and serial number from this product label photo. " +
                   "Find the line containing the word MODEL and extract the model value from that full line. " +
                   "For the serial number, first look for the line labeled SWITCH S/N and extract that value. Only use S/N, SN, or serial number if SWITCH S/N is not present. " +
-                  (knownModel ? `The model is already known as ${knownModel}; focus on the serial number. ` : "") +
+                  (knownModel ? `The previously saved model is ${knownModel}. If the photo shows a different model, return the model from the photo. ` : "") +
                   "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
                   "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
                   "Notes should briefly mention uncertainty, glare, blur, or missing fields."
@@ -206,7 +206,7 @@ async function extractScanFromImage(imageDataUrl, options = {}) {
     const parsed = parseJsonObject(outputText);
 
     return {
-      modelNumber: knownModel || String(parsed.modelNumber || "").trim(),
+      modelNumber: String(parsed.modelNumber || "").trim() || knownModel,
       serialNumber: String(parsed.serialNumber || "").trim(),
       confidence: Number(parsed.confidence || 0),
       notes: String(parsed.notes || "").trim(),
@@ -360,7 +360,8 @@ function parseInventoryText(text, knownModel = "") {
     .trim();
 
   const lines = getOcrLines(normalized);
-  const modelNumber = knownModel || findValueFromLine(lines, /\bmodel\b/i);
+  const scannedModelNumber = findValueFromLine(lines, /\bmodel\b/i);
+  const modelNumber = scannedModelNumber || knownModel;
   const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
