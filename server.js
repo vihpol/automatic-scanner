@@ -117,7 +117,8 @@ function serveStatic(req, res) {
 
     const extension = path.extname(requestedPath);
     res.writeHead(200, {
-      "Content-Type": MIME_TYPES[extension] || "application/octet-stream"
+      "Content-Type": MIME_TYPES[extension] || "application/octet-stream",
+      "Cache-Control": "no-store"
     });
     res.end(data);
   });
@@ -146,7 +147,7 @@ function readJson(req, maxBytes) {
 }
 
 async function extractScanFromImage(imageDataUrl, options = {}) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getUsableOpenAIKey();
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const knownModel = cleanInventoryValue(options.knownModel || "");
 
@@ -161,55 +162,73 @@ async function extractScanFromImage(imageDataUrl, options = {}) {
     });
   }
 
-  const response = await requestJson("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "Extract the inventory model number and serial number from this product label photo. " +
-                "Find the line containing the word MODEL and extract the model value from that full line. " +
-                "For the serial number, first look for the line labeled SWITCH S/N and extract that value. Only use S/N, SN, or serial number if SWITCH S/N is not present. " +
-                (knownModel ? `The model is already known as ${knownModel}; focus on the serial number. ` : "") +
-                "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
-                "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
-                "Notes should briefly mention uncertainty, glare, blur, or missing fields."
-            },
-            {
-              type: "input_image",
-              image_url: imageDataUrl,
-              detail: "high"
-            }
-          ]
-        }
-      ]
-    })
-  });
+  try {
+    const response = await requestJson("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Extract the inventory model number and serial number from this product label photo. " +
+                  "Find the line containing the word MODEL and extract the model value from that full line. " +
+                  "For the serial number, first look for the line labeled SWITCH S/N and extract that value. Only use S/N, SN, or serial number if SWITCH S/N is not present. " +
+                  (knownModel ? `The model is already known as ${knownModel}; focus on the serial number. ` : "") +
+                  "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
+                  "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
+                  "Notes should briefly mention uncertainty, glare, blur, or missing fields."
+              },
+              {
+                type: "input_image",
+                image_url: imageDataUrl,
+                detail: "high"
+              }
+            ]
+          }
+        ]
+      })
+    });
 
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`OpenAI extraction failed: ${response.body}`);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(response.body);
+    }
+
+    const data = JSON.parse(response.body);
+    const outputText = extractOpenAIText(data);
+    const parsed = parseJsonObject(outputText);
+
+    return {
+      modelNumber: knownModel || String(parsed.modelNumber || "").trim(),
+      serialNumber: String(parsed.serialNumber || "").trim(),
+      confidence: Number(parsed.confidence || 0),
+      notes: String(parsed.notes || "").trim(),
+      rawText: outputText
+    };
+  } catch (error) {
+    console.warn("Photo analysis service unavailable; using local reader:", error.message);
+    return extractScanWithTesseract(imageDataUrl, {
+      knownModel,
+      serialOnly: Boolean(options.serialOnly)
+    });
+  }
+}
+
+function getUsableOpenAIKey() {
+  const key = String(process.env.OPENAI_API_KEY || "").trim();
+
+  if (!key || /^optional_/i.test(key) || /your[_-]?api[_-]?key/i.test(key)) {
+    return "";
   }
 
-  const data = JSON.parse(response.body);
-  const outputText = extractOpenAIText(data);
-  const parsed = parseJsonObject(outputText);
-
-  return {
-    modelNumber: knownModel || String(parsed.modelNumber || "").trim(),
-    serialNumber: String(parsed.serialNumber || "").trim(),
-    confidence: Number(parsed.confidence || 0),
-    notes: String(parsed.notes || "").trim(),
-    rawText: outputText
-  };
+  return key;
 }
 
 async function extractScanWithTesseract(imageDataUrl, options = {}) {
