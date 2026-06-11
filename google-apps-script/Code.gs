@@ -101,10 +101,10 @@ function appendScanByModel(sheet, rawModelNumber, rawSerialNumber) {
 function findOrCreateModelColumn(sheet, modelNumber) {
   const lastColumn = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
-  const target = normalizeValue(modelNumber);
+  const target = modelKey(modelNumber);
 
   for (let index = 0; index < headers.length; index += 1) {
-    if (normalizeValue(headers[index]) === target) {
+    if (modelKey(headers[index]) === target) {
       return index + 1;
     }
   }
@@ -153,6 +153,10 @@ function cleanValue(value) {
 
 function normalizeValue(value) {
   return cleanValue(value).toLowerCase();
+}
+
+function modelKey(value) {
+  return normalizeValue(value).replace(/[^a-z0-9]/g, "");
 }
 
 function jsonResponse(data) {
