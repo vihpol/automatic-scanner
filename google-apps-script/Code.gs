@@ -1,5 +1,6 @@
 const SHEET_NAME = "Scans";
 const SHARED_SECRET = "change-this-password";
+const DEFAULT_SPREADSHEET_ID = "";
 
 function doPost(e) {
   try {
@@ -12,7 +13,8 @@ function doPost(e) {
       });
     }
 
-    const sheet = getOrCreateSheet();
+    const spreadsheet = getTargetSpreadsheet(payload.sheetId);
+    const sheet = getOrCreateSheet(spreadsheet, payload.tab || SHEET_NAME);
     sheet.appendRow([
       payload.timestamp || new Date().toISOString(),
       payload.modelNumber || "",
@@ -32,12 +34,25 @@ function doPost(e) {
   }
 }
 
-function getOrCreateSheet() {
+function getTargetSpreadsheet(sheetId) {
+  const targetId = String(sheetId || DEFAULT_SPREADSHEET_ID || "").trim();
+  if (targetId) {
+    return SpreadsheetApp.openById(targetId);
+  }
+
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!spreadsheet) {
+    throw new Error("No spreadsheet ID was provided.");
+  }
+
+  return spreadsheet;
+}
+
+function getOrCreateSheet(spreadsheet, sheetName) {
+  let sheet = spreadsheet.getSheetByName(sheetName);
 
   if (!sheet) {
-    sheet = spreadsheet.insertSheet(SHEET_NAME);
+    sheet = spreadsheet.insertSheet(sheetName);
   }
 
   if (sheet.getLastRow() === 0) {

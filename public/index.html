@@ -22,10 +22,20 @@
       <section class="scanner-panel" aria-labelledby="page-title">
         <div class="panel-heading">
           <h2>Scan label</h2>
-          <label class="toggle-control">
-            <input id="autoSave" type="checkbox" checked>
-            <span>Auto-save</span>
-          </label>
+          <div class="scan-options" aria-label="Scan options">
+            <label class="toggle-control">
+              <input id="rapidMode" type="checkbox" checked>
+              <span>Rapid mode</span>
+            </label>
+            <label class="toggle-control">
+              <input id="sameModel" type="checkbox" checked>
+              <span>Lock model</span>
+            </label>
+            <label class="toggle-control">
+              <input id="autoSave" type="checkbox" checked>
+              <span>Auto-save</span>
+            </label>
+          </div>
         </div>
 
         <div class="station-grid">
@@ -34,7 +44,7 @@
               <img id="photoPreview" alt="Selected inventory label preview">
               <div class="photo-placeholder" id="photoPlaceholder">
                 <strong>Ready</strong>
-                <span>Take a clear photo of the switch label.</span>
+                <span>Fill the frame with the model and switch S/N label lines.</span>
               </div>
             </div>
 
@@ -46,6 +56,22 @@
           </div>
 
           <form id="scanForm" class="scan-form">
+            <details class="sheet-settings" id="sheetSettings">
+              <summary>
+                <span>Sheet destination</span>
+                <strong id="sheetStatus">Not set</strong>
+              </summary>
+              <label>
+                Google Sheet URL or ID
+                <input id="sheetIdInput" name="sheetId" autocomplete="off" placeholder="Paste Google Sheet link or ID">
+              </label>
+              <label>
+                Tab
+                <input id="sheetTabInput" name="sheetTab" autocomplete="off" placeholder="Scans" value="Scans">
+              </label>
+              <button class="secondary-button" id="saveSheetSettings" type="button">Save Sheet</button>
+            </details>
+
             <label>
               Model number
               <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">

@@ -45,7 +45,10 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/extract") {
       const body = await readJson(req, 9000000);
-      const extraction = await extractScanFromImage(body.imageDataUrl);
+      const extraction = await extractScanFromImage(body.imageDataUrl, {
+        knownModel: body.knownModel,
+        serialOnly: body.serialOnly
+      });
       sendJson(res, 200, { ok: true, extraction });
       return;
     }
@@ -65,9 +68,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`Automatic Scanner running at http://${HOST}:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    console.log(`Automatic Scanner running at http://${HOST}:${PORT}`);
+  });
+}
 
 function loadDotEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -140,16 +145,20 @@ function readJson(req, maxBytes) {
   });
 }
 
-async function extractScanFromImage(imageDataUrl) {
+async function extractScanFromImage(imageDataUrl, options = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const knownModel = cleanInventoryValue(options.knownModel || "");
 
   if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(String(imageDataUrl || ""))) {
     throw new Error("A PNG, JPEG, or WebP image data URL is required.");
   }
 
   if (!apiKey) {
-    return extractScanWithTesseract(imageDataUrl);
+    return extractScanWithTesseract(imageDataUrl, {
+      knownModel,
+      serialOnly: Boolean(options.serialOnly)
+    });
   }
 
   const response = await requestJson("https://api.openai.com/v1/responses", {
@@ -168,6 +177,9 @@ async function extractScanFromImage(imageDataUrl) {
               type: "input_text",
               text:
                 "Extract the inventory model number and serial number from this product label photo. " +
+                "Find the line containing the word MODEL and extract the model value from that full line. " +
+                "Then find the line containing SWITCH S/N, S/N, SN, or serial number and extract the serial value from that full line. " +
+                (knownModel ? `The model is already known as ${knownModel}; focus on the serial number. ` : "") +
                 "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
                 "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
                 "Notes should briefly mention uncertainty, glare, blur, or missing fields."
@@ -192,7 +204,7 @@ async function extractScanFromImage(imageDataUrl) {
   const parsed = parseJsonObject(outputText);
 
   return {
-    modelNumber: String(parsed.modelNumber || "").trim(),
+    modelNumber: knownModel || String(parsed.modelNumber || "").trim(),
     serialNumber: String(parsed.serialNumber || "").trim(),
     confidence: Number(parsed.confidence || 0),
     notes: String(parsed.notes || "").trim(),
@@ -200,15 +212,15 @@ async function extractScanFromImage(imageDataUrl) {
   };
 }
 
-async function extractScanWithTesseract(imageDataUrl) {
+async function extractScanWithTesseract(imageDataUrl, options = {}) {
   const image = decodeImageDataUrl(imageDataUrl);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "automatic-scanner-"));
   const imagePath = path.join(tempDir, `label.${image.extension}`);
 
   try {
     fs.writeFileSync(imagePath, image.buffer);
-    const text = await runTesseract(imagePath);
-    const parsed = parseInventoryText(text);
+    const text = await extractTextFromLabelImages(imagePath, tempDir, options);
+    const parsed = parseInventoryText(text, options.knownModel);
 
     return {
       modelNumber: parsed.modelNumber,
@@ -218,12 +230,7 @@ async function extractScanWithTesseract(imageDataUrl) {
       rawText: text
     };
   } finally {
-    try {
-      fs.unlinkSync(imagePath);
-      fs.rmdirSync(tempDir);
-    } catch (error) {
-      console.warn("Unable to clean temporary OCR files:", error.message);
-    }
+    removeDirSafe(tempDir);
   }
 }
 
@@ -263,31 +270,79 @@ function runTesseract(imagePath) {
   });
 }
 
-function parseInventoryText(text) {
+async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
+  const imagePaths = [imagePath];
+  const variantSpecs = options.serialOnly
+    ? [
+        ["serial-center.jpg", ["-resize", "2200x2200>", "-gravity", "center", "-crop", "92%x70%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1"]]
+      ]
+    : [
+        ["enhanced.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
+        ["center.jpg", ["-resize", "2400x2400>", "-gravity", "center", "-crop", "94%x76%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1.2"]]
+      ];
+
+  for (const spec of variantSpecs) {
+    const variantPath = path.join(tempDir, spec[0]);
+    if (await makeImageVariant(imagePath, variantPath, spec[1])) {
+      imagePaths.push(variantPath);
+    }
+  }
+
+  const modes = options.serialOnly ? ["6"] : ["6", "11"];
+  const runs = [];
+
+  for (const candidatePath of imagePaths) {
+    for (const mode of modes) {
+      runs.push(runTesseractMode(candidatePath, mode));
+    }
+  }
+
+  const results = await Promise.all(runs);
+  return uniqueLines(results.join("\n")).join("\n").trim();
+}
+
+async function makeImageVariant(inputPath, outputPath, operations) {
+  const result = await execFileQuiet("convert", [inputPath, "-auto-orient"].concat(operations, [outputPath]), {
+    timeout: 12000
+  });
+  return result.ok && fs.existsSync(outputPath);
+}
+
+async function runTesseractMode(imagePath, mode) {
+  const result = await execFileQuiet("tesseract", [imagePath, "stdout", "--psm", mode], {
+    timeout: 20000,
+    maxBuffer: 1024 * 1024
+  });
+  return result.ok ? result.stdout.trim() : "";
+}
+
+function execFileQuiet(command, args, options) {
+  return new Promise((resolve) => {
+    childProcess.execFile(command, args, options || {}, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        stdout: String(stdout || ""),
+        stderr: String(stderr || ""),
+        error
+      });
+    });
+  });
+}
+
+function uniqueLines(text) {
+  return Array.from(new Set(String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)));
+}
+
+function parseInventoryText(text, knownModel = "") {
   const normalized = String(text || "")
     .replace(/[|]/g, "I")
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .trim();
 
-  const serialNumber = findLabeledValue(normalized, [
-    "serial number",
-    "serial no",
-    "serial",
-    "service tag",
-    "s/n",
-    "sn"
-  ]);
-  const modelNumber = findLabeledValue(normalized, [
-    "model number",
-    "model no",
-    "model",
-    "part number",
-    "part no",
-    "p/n",
-    "pn",
-    "sku"
-  ]);
+  const lines = getOcrLines(normalized);
+  const modelNumber = knownModel || findValueFromLine(lines, /\bmodel\b/i);
+  const serialNumber = findValueFromLine(lines, /\b(?:switch\s*)?s\s*\/?\s*n\b|\bserial(?:\s+number|\s+no)?\b/i);
 
   const candidates = normalized
     .split(/[^A-Z0-9._/-]+/i)
@@ -314,15 +369,46 @@ function parseInventoryText(text) {
   };
 }
 
-function findLabeledValue(text, labels) {
-  for (const label of labels) {
-    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`${escapedLabel}\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9._/-]{2,})`, "i");
-    const match = text.match(pattern);
-    if (match) return cleanInventoryValue(match[1]);
+function getOcrLines(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function findValueFromLine(lines, labelPattern) {
+  for (const line of lines) {
+    if (!labelPattern.test(line)) continue;
+
+    const value = valueAfterLabel(line, labelPattern);
+    if (value) return value;
   }
 
   return "";
+}
+
+function valueAfterLabel(line, labelPattern) {
+  const match = line.match(labelPattern);
+  if (!match) return "";
+
+  const afterLabel = line.slice(match.index + match[0].length);
+  const afterSeparator = afterLabel.replace(/^\s*(?:number|no\.?|#|[:=-])*\s*/i, "");
+  const tokens = afterSeparator
+    .split(/[^A-Z0-9._/-]+/i)
+    .map((value) => cleanInventoryValue(value))
+    .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 3);
+
+  return tokens
+    .sort((a, b) => scoreInventoryToken(b) - scoreInventoryToken(a))[0] || "";
+}
+
+function scoreInventoryToken(value) {
+  let score = value.length;
+  if (/^(?:Z|S|N|R|SW)[A-Z0-9]{1,8}[-_][A-Z0-9._/-]{2,}$/i.test(value)) score += 25;
+  if (/^GT[A-Z0-9]{8,}$/i.test(value)) score += 20;
+  if (/^3[SR][A-Z0-9]{10,}$/i.test(value)) score += 15;
+  if (/^[A-Z0-9]{12,}$/i.test(value)) score += 8;
+  return score;
 }
 
 function cleanInventoryValue(value) {
@@ -331,6 +417,29 @@ function cleanInventoryValue(value) {
     .replace(/O(?=\d)/g, "0")
     .replace(/\s+/g, "")
     .toUpperCase();
+}
+
+function removeDirSafe(dirPath) {
+  try {
+    if (fs.rmSync) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      return;
+    }
+
+    if (!fs.existsSync(dirPath)) return;
+    fs.readdirSync(dirPath).forEach((entry) => {
+      const entryPath = path.join(dirPath, entry);
+      const stat = fs.lstatSync(entryPath);
+      if (stat.isDirectory()) {
+        removeDirSafe(entryPath);
+      } else {
+        fs.unlinkSync(entryPath);
+      }
+    });
+    fs.rmdirSync(dirPath);
+  } catch (error) {
+    console.warn("Unable to clean temporary OCR files:", error.message);
+  }
 }
 
 function extractOpenAIText(data) {
@@ -366,7 +475,9 @@ function normalizeScan(body) {
     modelNumber: String(body.modelNumber || "").trim(),
     serialNumber: String(body.serialNumber || "").trim(),
     notes: String(body.notes || "").trim(),
-    source: String(body.source || "phone-scanner").trim()
+    source: String(body.source || "phone-scanner").trim(),
+    sheetId: cleanSheetId(body.sheetId || ""),
+    sheetTab: String(body.sheetTab || "").trim()
   };
 }
 
@@ -390,13 +501,17 @@ function validateScan(scan) {
 async function appendScanToSheet(scan) {
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const appsScriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET || "";
-  const sheetId = process.env.GOOGLE_SHEET_ID;
-  const tab = process.env.GOOGLE_SHEET_TAB || "Scans";
+  const sheetId = scan.sheetId || process.env.GOOGLE_SHEET_ID;
+  const tab = scan.sheetTab || process.env.GOOGLE_SHEET_TAB || "Scans";
   const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
   if (appsScriptUrl) {
-    await appendScanWithAppsScript(appsScriptUrl, appsScriptSecret, scan);
+    await appendScanWithAppsScript(appsScriptUrl, appsScriptSecret, {
+      sheetId,
+      tab,
+      scan
+    });
     return;
   }
 
@@ -436,7 +551,14 @@ async function appendScanToSheet(scan) {
   }
 }
 
-async function appendScanWithAppsScript(url, secret, scan) {
+function cleanSheetId(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return (match ? match[1] : text).trim();
+}
+
+async function appendScanWithAppsScript(url, secret, options) {
+  const scan = options.scan;
   const response = await requestJson(url, {
     method: "POST",
     headers: {
@@ -444,6 +566,8 @@ async function appendScanWithAppsScript(url, secret, scan) {
     },
     body: JSON.stringify({
       secret,
+      sheetId: options.sheetId || "",
+      tab: options.tab || "Scans",
       timestamp: scan.timestamp,
       modelNumber: scan.modelNumber,
       serialNumber: scan.serialNumber,
@@ -582,3 +706,7 @@ function sendJson(res, statusCode, payload) {
   });
   res.end(JSON.stringify(payload));
 }
+
+module.exports = {
+  parseInventoryText
+};

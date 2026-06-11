@@ -29,22 +29,23 @@ automatic-scanner/
 
 ## Google Sheets Setup With Apps Script
 
-1. Create a Google Sheet.
-2. Rename the first tab to `Scans`.
-3. Open `Extensions > Apps Script`.
-4. Paste the contents of `google-apps-script/Code.gs`.
-5. Change `SHARED_SECRET` in the script to a simple private value.
-6. Click `Deploy > New deployment`.
-7. Choose `Web app`.
-8. Set `Execute as` to `Me`.
-9. Set `Who has access` to `Anyone`.
-10. Deploy and copy the web app URL.
-11. Copy `.env.example` to `.env`.
-12. Fill in:
+Apps Script can be deployed once and reused for different spreadsheets. The scanner operator can paste the target Google Sheet link or ID directly into the scanner UI, so they do not need to reinstall Apps Script or edit `.env` for each Sheet.
+
+1. Create one Apps Script project at <https://script.google.com/>.
+2. Paste the contents of `google-apps-script/Code.gs`.
+3. Change `SHARED_SECRET` in the script to a simple private value.
+4. Click `Deploy > New deployment`.
+5. Choose `Web app`.
+6. Set `Execute as` to `Me`.
+7. Set `Who has access` to `Anyone`.
+8. Deploy and copy the web app URL.
+9. Copy `.env.example` to `.env`.
+10. Fill in:
    - `OPENAI_API_KEY` optional, for higher-accuracy vision extraction
    - `OPENAI_MODEL` optional, defaults to `gpt-4.1-mini`
    - `GOOGLE_APPS_SCRIPT_URL`
    - `GOOGLE_APPS_SCRIPT_SECRET`
+11. Start the scanner, open **Sheet destination**, paste the Google Sheet URL or ID, and tap **Save Sheet**.
 
 The sheet tab should have this header row:
 

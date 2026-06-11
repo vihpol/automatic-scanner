@@ -124,6 +124,14 @@ h2 {
   padding: 16px 18px;
 }
 
+.scan-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .toggle-control {
   display: flex;
   align-items: center;
@@ -160,6 +168,15 @@ h2 {
   background:
     linear-gradient(135deg, rgba(107, 212, 194, 0.09), transparent 42%),
     var(--panel-deep);
+}
+
+.photo-frame::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border: 1px dashed rgba(220, 227, 236, 0.24);
+  border-radius: 7px;
+  pointer-events: none;
 }
 
 .photo-frame img {
@@ -235,6 +252,63 @@ h2 {
   gap: 14px;
 }
 
+.sheet-settings {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-deep);
+  padding: 0;
+}
+
+.sheet-settings summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  list-style: none;
+  padding: 0 12px;
+}
+
+.sheet-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.sheet-settings summary strong {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: 0.72rem;
+  padding: 5px 9px;
+}
+
+.sheet-settings summary strong.ready {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.sheet-settings[open] {
+  padding: 0 12px 12px;
+}
+
+.sheet-settings[open] summary {
+  margin: 0 -12px 12px;
+}
+
+.secondary-button {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid var(--accent-line);
+  border-radius: 7px;
+  background: rgba(107, 212, 194, 0.08);
+  color: var(--accent);
+  font-weight: 900;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -304,5 +378,27 @@ input:focus {
   .panel-heading {
     align-items: flex-start;
     display: grid;
+  }
+
+  .scan-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .toggle-control {
+    justify-content: center;
+    min-height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(21, 26, 32, 0.8);
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 410px) {
+  .scan-options {
+    grid-template-columns: 1fr;
   }
 }
