@@ -559,6 +559,53 @@ function cleanSheetId(value) {
 
 async function appendScanWithAppsScript(url, secret, options) {
   const scan = options.scan;
+  postJsonInBackground(url, {
+    secret,
+    sheetId: options.sheetId || "",
+    tab: options.tab || "Scans",
+    timestamp: scan.timestamp,
+    modelNumber: scan.modelNumber,
+    serialNumber: scan.serialNumber,
+    notes: scan.notes,
+    source: scan.source
+  });
+}
+
+function postJsonInBackground(url, payload) {
+  const body = JSON.stringify(payload);
+  const parsedUrl = new URL(url);
+  const request = https.request(
+    {
+      method: "POST",
+      hostname: parsedUrl.hostname,
+      path: `${parsedUrl.pathname}${parsedUrl.search}`,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body)
+      }
+    },
+    (response) => {
+      response.resume();
+      response.on("end", () => {
+        if (response.statusCode < 200 || response.statusCode >= 400) {
+          console.warn(`Apps Script returned status ${response.statusCode}`);
+        }
+      });
+    }
+  );
+
+  request.on("error", (error) => {
+    console.warn(`Apps Script background append failed: ${error.message}`);
+  });
+  request.setTimeout(15000, () => {
+    request.destroy(new Error("Apps Script request timed out"));
+  });
+  request.write(body);
+  request.end();
+}
+
+async function appendScanWithAppsScriptBlocking(url, secret, options) {
+  const scan = options.scan;
   const response = await requestJson(url, {
     method: "POST",
     headers: {
@@ -574,7 +621,11 @@ async function appendScanWithAppsScript(url, secret, options) {
       notes: scan.notes,
       source: scan.source
     })
-  });
+  }, 0, false);
+
+  if (response.statusCode >= 300 && response.statusCode < 400) {
+    return;
+  }
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`Apps Script append failed: ${response.body}`);
@@ -651,9 +702,10 @@ function base64ToBase64Url(value) {
     .replace(/=+$/, "");
 }
 
-function requestJson(url, options, redirectCount) {
+function requestJson(url, options, redirectCount, followRedirects) {
   return new Promise((resolve, reject) => {
     const redirects = redirectCount || 0;
+    const shouldFollowRedirects = followRedirects !== false;
     const parsedUrl = new URL(url);
     const body = options.body ? String(options.body) : "";
     const request = https.request(
@@ -676,13 +728,21 @@ function requestJson(url, options, redirectCount) {
         });
         response.on("end", () => {
           if (
+            shouldFollowRedirects &&
             response.statusCode >= 300 &&
             response.statusCode < 400 &&
             response.headers.location &&
             redirects < 5
           ) {
             const nextUrl = new URL(response.headers.location, url).toString();
-            requestJson(nextUrl, options, redirects + 1).then(resolve, reject);
+            const nextOptions =
+              response.statusCode === 302 || response.statusCode === 303
+                ? {
+                    method: "GET",
+                    headers: {}
+                  }
+                : options;
+            requestJson(nextUrl, nextOptions, redirects + 1, shouldFollowRedirects).then(resolve, reject);
             return;
           }
 
@@ -695,6 +755,9 @@ function requestJson(url, options, redirectCount) {
     );
 
     request.on("error", reject);
+    request.setTimeout(15000, () => {
+      request.destroy(new Error("Request timed out"));
+    });
     request.write(body);
     request.end();
   });

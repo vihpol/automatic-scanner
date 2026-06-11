@@ -13,19 +13,12 @@ const extractPhoto = document.querySelector("#extractPhoto");
 const scanForm = document.querySelector("#scanForm");
 const submitScan = document.querySelector("#submitScan");
 const formStatus = document.querySelector("#formStatus");
-const sheetSettings = document.querySelector("#sheetSettings");
-const sheetStatus = document.querySelector("#sheetStatus");
-const sheetIdInput = document.querySelector("#sheetIdInput");
-const sheetTabInput = document.querySelector("#sheetTabInput");
-const saveSheetSettings = document.querySelector("#saveSheetSettings");
 const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
 const rapidMode = document.querySelector("#rapidMode");
 const autoSave = document.querySelector("#autoSave");
 const sameModel = document.querySelector("#sameModel");
 const LAST_MODEL_KEY = "automaticScanner.lastModelNumber";
-const SHEET_ID_KEY = "automaticScanner.googleSheetId";
-const SHEET_TAB_KEY = "automaticScanner.googleSheetTab";
 
 initialize();
 
@@ -34,7 +27,6 @@ function initialize() {
   labelPhoto.addEventListener("change", handlePhotoSelection);
   extractPhoto.addEventListener("click", extractFromPhoto);
   scanForm.addEventListener("submit", submitCurrentScan);
-  saveSheetSettings.addEventListener("click", handleSaveSheetSettings);
   modelNumber.addEventListener("input", updateValidation);
   serialNumber.addEventListener("input", updateValidation);
   serialNumber.addEventListener("keydown", handleSerialKeydown);
@@ -43,7 +35,6 @@ function initialize() {
   sameModel.addEventListener("change", handleSameModelChange);
   handleRapidModeChange();
   restoreLastModel();
-  restoreSheetSettings();
   updateValidation();
 }
 
@@ -128,9 +119,7 @@ async function saveScan() {
     modelNumber: modelNumber.value.trim(),
     serialNumber: serialNumber.value.trim(),
     notes: "",
-    source: "phone-photo",
-    sheetId: currentSheetId(),
-    sheetTab: currentSheetTab()
+    source: "phone-photo"
   };
 
   const errors = getValidationErrors(payload);
@@ -367,61 +356,6 @@ function restoreLastModel() {
   }
 }
 
-function currentSheetId() {
-  return extractSheetId(sheetIdInput.value);
-}
-
-function currentSheetTab() {
-  return sheetTabInput.value.trim() || "Scans";
-}
-
-function extractSheetId(value) {
-  const text = String(value || "").trim();
-  const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return (match ? match[1] : text).trim();
-}
-
-function restoreSheetSettings() {
-  try {
-    sheetIdInput.value = window.localStorage.getItem(SHEET_ID_KEY) || "";
-    sheetTabInput.value = window.localStorage.getItem(SHEET_TAB_KEY) || "Scans";
-  } catch (error) {
-    sheetTabInput.value = "Scans";
-  }
-  updateSheetStatus();
-}
-
-function handleSaveSheetSettings() {
-  const sheetId = currentSheetId();
-  const tab = currentSheetTab();
-
-  if (!sheetId) {
-    sheetSettings.open = true;
-    updateSheetStatus();
-    setFormStatus("Paste a Google Sheet link or ID.", false);
-    return;
-  }
-
-  sheetIdInput.value = sheetId;
-  sheetTabInput.value = tab;
-  try {
-    window.localStorage.setItem(SHEET_ID_KEY, sheetId);
-    window.localStorage.setItem(SHEET_TAB_KEY, tab);
-  } catch (error) {
-    // Local storage can be disabled; the current page values still work.
-  }
-  sheetSettings.open = false;
-  updateSheetStatus();
-  setFormStatus("Sheet saved. Ready to scan.", true);
-  updateValidation();
-}
-
-function updateSheetStatus() {
-  const sheetId = currentSheetId();
-  sheetStatus.textContent = sheetId ? "Set" : "Not set";
-  sheetStatus.classList.toggle("ready", Boolean(sheetId));
-}
-
 function handleSameModelChange() {
   if (rapidMode.checked && !sameModel.checked) {
     rapidMode.checked = false;
@@ -461,8 +395,7 @@ function clearFieldsForNewModel() {
 function updateValidation() {
   const payload = {
     modelNumber: modelNumber.value.trim(),
-    serialNumber: serialNumber.value.trim(),
-    sheetId: currentSheetId()
+    serialNumber: serialNumber.value.trim()
   };
   const errors = getValidationErrors(payload);
 
@@ -486,7 +419,6 @@ function updateValidation() {
 
 function getValidationErrors(payload) {
   const errors = [];
-  if (!payload.sheetId) errors.push("Sheet destination is missing.");
   if (!payload.modelNumber) errors.push("Model number is missing.");
   if (!payload.serialNumber) errors.push("Serial number is missing.");
   if (
