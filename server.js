@@ -178,7 +178,7 @@ async function extractScanFromImage(imageDataUrl, options = {}) {
               text:
                 "Extract the inventory model number and serial number from this product label photo. " +
                 "Find the line containing the word MODEL and extract the model value from that full line. " +
-                "Then find the line containing SWITCH S/N, S/N, SN, or serial number and extract the serial value from that full line. " +
+                "For the serial number, first look for the line labeled SWITCH S/N and extract that value. Only use S/N, SN, or serial number if SWITCH S/N is not present. " +
                 (knownModel ? `The model is already known as ${knownModel}; focus on the serial number. ` : "") +
                 "Return only valid JSON with keys modelNumber, serialNumber, confidence, and notes. " +
                 "Use empty strings for fields you cannot read. Confidence must be a number from 0 to 1. " +
@@ -342,7 +342,9 @@ function parseInventoryText(text, knownModel = "") {
 
   const lines = getOcrLines(normalized);
   const modelNumber = knownModel || findValueFromLine(lines, /\bmodel\b/i);
-  const serialNumber = findValueFromLine(lines, /\b(?:switch\s*)?s\s*\/?\s*n\b|\bserial(?:\s+number|\s+no)?\b/i);
+  const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*s\s*\/?\s*n\b/i);
+  const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bserial(?:\s+number|\s+no)?\b/i);
+  const serialNumber = switchSerialNumber || genericSerialNumber;
 
   const candidates = normalized
     .split(/[^A-Z0-9._/-]+/i)
@@ -364,8 +366,8 @@ function parseInventoryText(text, knownModel = "") {
     serialNumber: resolvedSerial,
     confidence: foundBoth ? (usedLabels ? 0.72 : 0.48) : 0.25,
     notes: foundBoth
-      ? "Extracted with local OCR. Review before saving."
-      : "Local OCR could not confidently find both fields. Type missing values before saving."
+      ? "Read from photo. Review before saving."
+      : "Photo scan could not confidently find both fields. Type missing values before saving."
   };
 }
 
@@ -438,7 +440,7 @@ function removeDirSafe(dirPath) {
     });
     fs.rmdirSync(dirPath);
   } catch (error) {
-    console.warn("Unable to clean temporary OCR files:", error.message);
+    console.warn("Unable to clean temporary scan files:", error.message);
   }
 }
 

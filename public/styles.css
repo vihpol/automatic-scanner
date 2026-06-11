@@ -252,61 +252,26 @@ h2 {
   gap: 14px;
 }
 
-.sheet-settings {
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--panel-deep);
-  padding: 0;
-}
-
-.sheet-settings summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 44px;
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 900;
-  list-style: none;
-  padding: 0 12px;
-}
-
-.sheet-settings summary::-webkit-details-marker {
-  display: none;
-}
-
-.sheet-settings summary strong {
+.progress-wrap {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  color: var(--warning);
-  font-size: 0.72rem;
-  padding: 5px 9px;
+  background: var(--panel-deep);
+  padding: 4px;
 }
 
-.sheet-settings summary strong.ready {
-  border-color: var(--accent-line);
-  color: var(--accent);
+.progress-track {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(220, 227, 236, 0.08);
 }
 
-.sheet-settings[open] {
-  padding: 0 12px 12px;
-}
-
-.sheet-settings[open] summary {
-  margin: 0 -12px 12px;
-}
-
-.secondary-button {
-  display: grid;
-  min-height: 42px;
-  place-items: center;
-  border: 1px solid var(--accent-line);
-  border-radius: 7px;
-  background: rgba(107, 212, 194, 0.08);
-  color: var(--accent);
-  font-weight: 900;
+.progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 220ms ease;
 }
 
 label {

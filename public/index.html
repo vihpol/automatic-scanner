@@ -51,11 +51,17 @@
             <div class="photo-actions">
               <label class="file-button" for="labelPhoto">Scan Label</label>
               <input id="labelPhoto" type="file" accept="image/*" capture="environment">
-              <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry OCR</button>
+              <button class="primary-button hidden" id="extractPhoto" type="button" disabled>Retry Scan</button>
             </div>
           </div>
 
           <form id="scanForm" class="scan-form">
+            <div class="progress-wrap" aria-label="Scan progress">
+              <div class="progress-track">
+                <div class="progress-bar" id="progressBar"></div>
+              </div>
+            </div>
+
             <label>
               Model number
               <input id="modelNumber" name="modelNumber" autocomplete="off" placeholder="Example: Z9432F-ON">

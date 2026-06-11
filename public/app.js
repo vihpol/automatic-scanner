@@ -13,6 +13,7 @@ const extractPhoto = document.querySelector("#extractPhoto");
 const scanForm = document.querySelector("#scanForm");
 const submitScan = document.querySelector("#submitScan");
 const formStatus = document.querySelector("#formStatus");
+const progressBar = document.querySelector("#progressBar");
 const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
 const rapidMode = document.querySelector("#rapidMode");
@@ -51,7 +52,8 @@ async function handlePhotoSelection(event) {
     if (!shouldKeepModel()) {
       clearFieldsForNewModel();
     }
-    setFormStatus("Preparing photo for OCR.", true);
+    setProgress(18);
+    setFormStatus("Preparing photo.", true);
     state.imageDataUrl = await readPreparedImage(file);
     photoPreview.src = state.imageDataUrl;
     photoPreview.classList.add("visible");
@@ -77,6 +79,7 @@ async function extractFromPhoto() {
   extractPhoto.disabled = true;
   extractPhoto.classList.add("hidden");
   supportStatus.textContent = "Reading";
+  setProgress(42);
   setFormStatus("Reading label.", true);
 
   try {
@@ -100,7 +103,8 @@ async function extractFromPhoto() {
     await applyExtraction(result.extraction);
   } catch (error) {
     console.error(error);
-    setFormStatus("OCR failed. Retake photo or type fields.", false);
+    setProgress(0);
+    setFormStatus("Scan failed. Retake photo or type fields.", false);
     supportStatus.textContent = "Review";
     extractPhoto.classList.remove("hidden");
   } finally {
@@ -131,6 +135,7 @@ async function saveScan() {
   state.saving = true;
   submitScan.disabled = true;
   supportStatus.textContent = "Saving";
+  setProgress(86);
   setFormStatus("Sending to Google Sheets.", true);
 
   try {
@@ -151,9 +156,12 @@ async function saveScan() {
     state.savedCount += 1;
     serialNumber.value = "";
     clearPhoto();
+    setProgress(100);
     supportStatus.textContent = rapidMode.checked ? `${state.savedCount} saved` : "Ready";
     setFormStatus(rapidMode.checked ? "Saved. Tap Scan Label for next." : "Saved. Ready for next label.", true);
+    setTimeout(() => setProgress(0), 900);
   } catch (error) {
+    setProgress(0);
     setFormStatus(error.message || "Unable to save scan.", false);
     supportStatus.textContent = "Review";
   } finally {
@@ -170,6 +178,7 @@ async function applyExtraction(extraction) {
   const confidence = Number(extraction.confidence || 0);
   const confidencePercent = Math.round(confidence * 100);
   supportStatus.textContent = confidencePercent ? `${confidencePercent}% read` : "Read";
+  setProgress(72);
   updateValidation();
 
   const missing = getValidationErrors({
@@ -178,6 +187,7 @@ async function applyExtraction(extraction) {
   });
 
   if (missing.length > 0) {
+    setProgress(0);
     setFormStatus(`Review needed. ${missing.join(" ")}`, false);
     extractPhoto.classList.remove("hidden");
     return;
@@ -206,6 +216,7 @@ async function applyFastBarcodeRead() {
 
     serialNumber.value = serial;
     supportStatus.textContent = "Barcode read";
+    setProgress(72);
     updateValidation();
 
     if (autoSave.checked) {
@@ -231,6 +242,10 @@ function clearPhoto() {
   if (!rapidMode.checked || state.savedCount === 0) {
     supportStatus.textContent = "Ready";
   }
+}
+
+function setProgress(percent) {
+  progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
 }
 
 function readPreparedImage(file) {
