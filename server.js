@@ -674,27 +674,30 @@ async function appendScanWithAppsScriptBlocking(url, secret, options) {
     source: scan.source
   });
   const separator = url.includes("?") ? "&" : "?";
-  const response = await requestJson(`${url}${separator}${params.toString()}`, {
-    method: "GET",
-    headers: {}
-  });
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`Apps Script append failed: ${response.body}`);
-  }
-
-  let data;
-  try {
-    data = JSON.parse(response.body);
-  } catch (error) {
-    throw new Error(`Apps Script returned invalid JSON: ${response.body}`);
-  }
+  const data = await requestAppsScriptJson(`${url}${separator}${params.toString()}`);
 
   if (!data.ok) {
     throw new Error(data.error || "Apps Script append failed.");
   }
 
   return data;
+}
+
+async function requestAppsScriptJson(url) {
+  const result = await execFileQuiet("curl", ["-sS", "-L", "--max-time", "25", url], {
+    timeout: 30000,
+    maxBuffer: 1024 * 1024
+  });
+
+  if (!result.ok) {
+    throw new Error(`Apps Script request failed: ${result.stderr || result.error.message}`);
+  }
+
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(`Apps Script returned invalid JSON: ${result.stdout.slice(0, 500)}`);
+  }
 }
 
 async function getGoogleAccessToken(clientEmail, privateKey) {
