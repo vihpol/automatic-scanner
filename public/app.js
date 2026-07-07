@@ -33,6 +33,7 @@ initialize();
 
 function initialize() {
   supportStatus.textContent = "Ready";
+  updateCameraAvailability();
   openCamera.addEventListener("click", startCamera);
   capturePhoto.addEventListener("click", captureFromCamera);
   cameraZoom.addEventListener("input", applyCameraZoom);
@@ -51,8 +52,23 @@ function initialize() {
   updateValidation();
 }
 
+function updateCameraAvailability() {
+  if (canUseLiveCamera()) return;
+
+  openCamera.classList.add("hidden");
+}
+
+function canUseLiveCamera() {
+  return Boolean(
+    window.isSecureContext &&
+    navigator.mediaDevices &&
+    navigator.mediaDevices.getUserMedia
+  );
+}
+
 async function startCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  if (!canUseLiveCamera()) {
+    openCamera.classList.add("hidden");
     setFormStatus("Use Phone Camera.", false);
     labelPhoto.click();
     return;
