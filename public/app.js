@@ -333,6 +333,10 @@ async function saveScan() {
 }
 
 function getSavedMessage(sheet) {
+  if (sheet && sheet.headerCell && sheet.serialCell) {
+    return `Saved. Model ${sheet.headerCell}, serial ${sheet.serialCell}.`;
+  }
+
   if (sheet && sheet.spreadsheetName && sheet.sheetName) {
     return `Saved to ${sheet.spreadsheetName} / ${sheet.sheetName}.`;
   }

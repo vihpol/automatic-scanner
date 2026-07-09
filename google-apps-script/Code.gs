@@ -45,7 +45,10 @@ function handlePayload(payload) {
     sheetName: sheet.getName(),
     row: location.row,
     column: location.column,
-    headerValue: location.headerValue
+    headerCell: location.headerCell,
+    serialCell: location.serialCell,
+    headerValue: location.headerValue,
+    serialValue: location.serialValue
   });
 }
 
@@ -90,18 +93,23 @@ function appendScanByModel(sheet, rawModelNumber, rawSerialNumber) {
   const headerRange = sheet.getRange(1, column);
   const serialRange = sheet.getRange(nextRow, column);
 
-  headerRange.setNumberFormat("@");
-  serialRange.setNumberFormat("@");
-  headerRange.setValue(modelNumber);
-  serialRange.setValue(serialNumber);
-  headerRange.setFontWeight("bold");
+  writePlainText(headerRange, modelNumber);
+  writePlainText(serialRange, serialNumber);
+  headerRange
+    .setFontWeight("bold")
+    .setBackground("#dbeafe");
   sheet.autoResizeColumn(column);
   SpreadsheetApp.flush();
+
+  const columnLetter = columnToLetter(column);
 
   return {
     row: nextRow,
     column,
-    headerValue: cleanValue(headerRange.getDisplayValue())
+    headerCell: `${columnLetter}1`,
+    serialCell: `${columnLetter}${nextRow}`,
+    headerValue: cleanValue(headerRange.getDisplayValue()),
+    serialValue: cleanValue(serialRange.getDisplayValue())
   };
 }
 
@@ -152,6 +160,25 @@ function isStarterTemplate(sheet) {
   return onlyOneColumn &&
     normalizeValue(firstCell) === "model number" &&
     normalizeValue(secondCell) === "serial number";
+}
+
+function writePlainText(range, value) {
+  range
+    .setNumberFormat("@")
+    .setValue(cleanValue(value));
+}
+
+function columnToLetter(column) {
+  let letter = "";
+  let current = column;
+
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    current = Math.floor((current - 1) / 26);
+  }
+
+  return letter;
 }
 
 function cleanValue(value) {
