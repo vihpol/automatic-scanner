@@ -366,7 +366,7 @@ function parseInventoryText(text, knownModel = "") {
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
-  const serialNumber = switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby;
+  const serialNumber = switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
 
   const candidates = normalized
     .split(/[^A-Z0-9._/-]+/i)
@@ -374,6 +374,7 @@ function parseInventoryText(text, knownModel = "") {
     .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 5);
 
   const fallbackSerial = candidates
+    .filter((candidate) => !isLikelyModelOrProduct(candidate))
     .slice()
     .sort((a, b) => b.length - a.length)[0] || "";
   const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial) || "";
@@ -450,7 +451,7 @@ function bestInventoryToken(text) {
 }
 
 function looksLikeLabelLine(line) {
-  return /\b(model|switch|serial|s\s*\/?\s*n|sn|mac|part|p\s*\/?\s*n|dp\s*\/?\s*n)\b/i.test(line);
+  return /\b(model|switch|serial|s\s*\/?\s*n|sn|mac|part|p\s*\/?\s*n|dp\s*\/?\s*n|product|quantity|weight|version|remark)\b/i.test(line);
 }
 
 function scoreInventoryToken(value) {
@@ -463,12 +464,50 @@ function scoreInventoryToken(value) {
   return score;
 }
 
+function findBestSerialCandidate(lines) {
+  const tokens = [];
+
+  for (const line of lines) {
+    if (/\b(product|model|quantity|weight|version|remark)\b/i.test(line)) continue;
+
+    String(line || "")
+      .split(/[^A-Z0-9._/-]+/i)
+      .map((value) => cleanInventoryValue(value))
+      .filter((value) => value.length >= 8)
+      .filter((value) => !isLikelyModelOrProduct(value))
+      .forEach((value) => tokens.push(value));
+  }
+
+  return tokens.sort((a, b) => scoreSerialToken(b) - scoreSerialToken(a))[0] || "";
+}
+
+function scoreSerialToken(value) {
+  let score = value.length;
+  if (/^GT[A-Z0-9]{8,}$/i.test(value)) score += 80;
+  if (/^3[SR][A-Z0-9]{10,}$/i.test(value)) score += 60;
+  if (/^[A-Z0-9]{12,}$/i.test(value)) score += 25;
+  if (isLikelyModelOrProduct(value)) score -= 120;
+  return score;
+}
+
+function isLikelyModelOrProduct(value) {
+  return /^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
+    /-ACF$/i.test(value) ||
+    /^(?:MODEL|PRODUCT|SERIAL|NUMBER|SWITCH)$/i.test(value);
+}
+
 function cleanInventoryValue(value) {
-  return String(value || "")
+  let cleaned = String(value || "")
     .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, "")
     .replace(/O(?=\d)/g, "0")
     .replace(/\s+/g, "")
     .toUpperCase();
+
+  cleaned = cleaned
+    .replace(/(\d)U(?=\d|G)/g, "$10")
+    .replace(/THS(?=$|[-_])/g, "TH5");
+
+  return cleaned;
 }
 
 function removeDirSafe(dirPath) {
