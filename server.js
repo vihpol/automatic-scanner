@@ -44,7 +44,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/extract") {
-      const body = await readJson(req, 9000000);
+      const body = await readJson(req, 18000000);
       const extraction = await extractScanFromImage(body.imageDataUrl, {
         knownModel: body.knownModel,
         serialOnly: body.serialOnly
@@ -363,15 +363,17 @@ function parseInventoryText(text, knownModel = "") {
     .trim();
 
   const lines = getOcrLines(normalized);
+  const scannedModelFromText = findModelFromText(normalized);
   const scannedModelNumber = findValueFromLine(lines, /\bmodel\b/i);
   const scannedModelBelow = findValueBelowLabel(lines, /\bmodel\b/i, isLikelyModelToken);
   const scannedModelNearby = findValueNearLabel(lines, /\bmodel\b/i, isLikelyModelToken);
-  const modelNumber = scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
+  const modelNumber = scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
+  const switchSerialFromText = findSwitchSerialFromText(normalized);
   const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
-  const serialNumber = switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
+  const serialNumber = switchSerialFromText || switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
 
   const candidates = normalized
     .split(/[^A-Z0-9._/-]+/i)
@@ -404,6 +406,22 @@ function getOcrLines(text) {
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+}
+
+function findModelFromText(text) {
+  const match = String(text || "").match(/\bmodel\s*[:;]?\s*[\r\n ]*([A-Z0-9][A-Z0-9._/-]{4,})/i);
+  if (!match) return "";
+
+  const value = cleanInventoryValue(match[1]);
+  return isLikelyModelToken(value) ? value : "";
+}
+
+function findSwitchSerialFromText(text) {
+  const match = String(text || "").match(/\bswitch\s*s\s*\/?\s*n\s*[:;]?\s*([A-Z0-9][A-Z0-9._/-]{7,})/i);
+  if (!match) return "";
+
+  const value = cleanInventoryValue(match[1]);
+  return isLikelyModelOrProduct(value) ? "" : value;
 }
 
 function findValueFromLine(lines, labelPattern) {
