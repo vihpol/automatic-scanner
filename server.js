@@ -311,15 +311,15 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
   }
 
   const modes = options.serialOnly ? ["6"] : ["6", "11"];
-  const runs = [];
+  const results = [];
 
   for (const candidatePath of imagePaths) {
     for (const mode of modes) {
-      runs.push(runTesseractMode(candidatePath, mode));
+      const text = await runTesseractMode(candidatePath, mode);
+      if (text) results.push(text);
     }
   }
 
-  const results = await Promise.all(runs);
   return uniqueLines(results.join("\n")).join("\n").trim();
 }
 
@@ -332,7 +332,7 @@ async function makeImageVariant(inputPath, outputPath, operations) {
 
 async function runTesseractMode(imagePath, mode) {
   const result = await execFileQuiet("tesseract", [imagePath, "stdout", "--psm", mode], {
-    timeout: 20000,
+    timeout: 45000,
     maxBuffer: 1024 * 1024
   });
   return result.ok ? result.stdout.trim() : "";
