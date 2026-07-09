@@ -44,7 +44,8 @@ function handlePayload(payload) {
     spreadsheetUrl: spreadsheet.getUrl(),
     sheetName: sheet.getName(),
     row: location.row,
-    column: location.column
+    column: location.column,
+    headerValue: location.headerValue
   });
 }
 
@@ -86,15 +87,21 @@ function appendScanByModel(sheet, rawModelNumber, rawSerialNumber) {
 
   const column = findOrCreateModelColumn(sheet, modelNumber);
   const nextRow = findNextSerialRow(sheet, column);
+  const headerRange = sheet.getRange(1, column);
+  const serialRange = sheet.getRange(nextRow, column);
 
-  sheet.getRange(1, column).setValue(modelNumber);
-  sheet.getRange(nextRow, column).setValue(serialNumber);
-  sheet.getRange(1, column).setFontWeight("bold");
+  headerRange.setNumberFormat("@");
+  serialRange.setNumberFormat("@");
+  headerRange.setValue(modelNumber);
+  serialRange.setValue(serialNumber);
+  headerRange.setFontWeight("bold");
   sheet.autoResizeColumn(column);
+  SpreadsheetApp.flush();
 
   return {
     row: nextRow,
-    column
+    column,
+    headerValue: cleanValue(headerRange.getDisplayValue())
   };
 }
 
