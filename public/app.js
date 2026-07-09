@@ -372,7 +372,7 @@ async function applyExtraction(extraction) {
     return;
   }
 
-  if (autoSave.checked && confidence >= 0.45) {
+  if (autoSave.checked && confidence >= 0.8) {
     setFormStatus("Read complete. Auto-saving.", true);
     await saveScan();
     return;

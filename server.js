@@ -293,14 +293,14 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
   const imagePaths = [imagePath];
   const variantSpecs = options.serialOnly
     ? [
-        ["serial-center.jpg", ["-resize", "2200x2200>", "-gravity", "center", "-crop", "92%x70%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1"]]
+        ["serial-center.jpg", ["-resize", "2200x2200>", "-gravity", "center", "-crop", "94%x66%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1"]]
       ]
     : [
-        ["enhanced.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
-        ["dark-boost.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-brightness-contrast", "22x34", "-normalize", "-sharpen", "0x1.3"]],
-        ["glare-cut.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]],
-        ["threshold.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]],
-        ["center.jpg", ["-resize", "2800x2800>", "-gravity", "center", "-crop", "96%x80%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]]
+        ["enhanced.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
+        ["label-band.jpg", ["-resize", "2400x2400>", "-gravity", "center", "-crop", "96%x68%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]],
+        ["glare-cut.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]],
+        ["dark-boost.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-brightness-contrast", "22x34", "-normalize", "-sharpen", "0x1.3"]],
+        ["threshold.jpg", ["-resize", "2200x2200>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]]
       ];
 
   for (const spec of variantSpecs) {
@@ -316,7 +316,15 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
   for (const candidatePath of imagePaths) {
     for (const mode of modes) {
       const text = await runTesseractMode(candidatePath, mode);
-      if (text) results.push(text);
+      if (!text) continue;
+
+      results.push(text);
+
+      const combined = uniqueLines(results.join("\n")).join("\n").trim();
+      const parsed = parseInventoryText(combined, options.knownModel);
+      if (hasCompleteConfidentRead(parsed)) {
+        return combined;
+      }
     }
   }
 
@@ -355,6 +363,15 @@ function uniqueLines(text) {
   return Array.from(new Set(String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)));
 }
 
+function hasCompleteConfidentRead(parsed) {
+  return Boolean(
+    parsed &&
+    parsed.modelNumber &&
+    parsed.serialNumber &&
+    parsed.confidence >= 0.8
+  );
+}
+
 function parseInventoryText(text, knownModel = "") {
   const normalized = String(text || "")
     .replace(/[|]/g, "I")
@@ -389,16 +406,25 @@ function parseInventoryText(text, knownModel = "") {
   const resolvedModel = cleanInventoryValue(modelNumber || fallbackModel);
   const resolvedSerial = cleanInventoryValue(serialNumber || fallbackSerial);
   const foundBoth = Boolean(resolvedModel && resolvedSerial);
-  const usedLabels = Boolean(modelNumber || serialNumber);
+  const foundLabeledModel = Boolean(scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
+  const foundLabeledSerial = Boolean(switchSerialFromText || switchSerialNumber || switchSerialNearby);
+  const usedLabels = Boolean(foundLabeledModel || foundLabeledSerial || genericSerialNumber || genericSerialNearby);
 
   return {
     modelNumber: resolvedModel,
     serialNumber: resolvedSerial,
-    confidence: foundBoth ? (usedLabels ? 0.72 : 0.48) : 0.25,
+    confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels),
     notes: foundBoth
       ? "Read from photo. Review before saving."
       : "Photo scan could not confidently find both fields. Type missing values before saving."
   };
+}
+
+function getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels) {
+  if (!foundBoth) return 0.25;
+  if (foundLabeledModel && foundLabeledSerial) return 0.84;
+  if (foundLabeledModel || foundLabeledSerial) return 0.62;
+  return usedLabels ? 0.52 : 0.38;
 }
 
 function getOcrLines(text) {
@@ -477,10 +503,16 @@ function valueAfterLabel(line, labelPattern) {
 }
 
 function bestInventoryToken(text) {
-  const tokens = String(text || "")
+  const rawText = String(text || "");
+  const compactToken = cleanInventoryValue(rawText);
+  const tokens = rawText
     .split(/[^A-Z0-9._/-]+/i)
     .map((value) => cleanInventoryValue(value))
     .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 3);
+
+  if (/[A-Z]/i.test(compactToken) && /\d/.test(compactToken) && compactToken.length >= 5) {
+    tokens.push(compactToken);
+  }
 
   return tokens
     .sort((a, b) => scoreInventoryToken(b) - scoreInventoryToken(a))[0] || "";
