@@ -364,8 +364,9 @@ function parseInventoryText(text, knownModel = "") {
 
   const lines = getOcrLines(normalized);
   const scannedModelNumber = findValueFromLine(lines, /\bmodel\b/i);
+  const scannedModelBelow = findValueBelowLabel(lines, /\bmodel\b/i, isLikelyModelToken);
   const scannedModelNearby = findValueNearLabel(lines, /\bmodel\b/i, isLikelyModelToken);
-  const modelNumber = scannedModelNumber || scannedModelNearby || knownModel;
+  const modelNumber = scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
   const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
@@ -428,6 +429,19 @@ function findValueNearLabel(lines, labelPattern, validator) {
       if (looksLikeLabelLine(nextLine)) continue;
 
       const value = bestInventoryToken(nextLine);
+      if (value && (!validator || validator(value))) return value;
+    }
+  }
+
+  return "";
+}
+
+function findValueBelowLabel(lines, labelPattern, validator) {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!labelPattern.test(lines[index])) continue;
+
+    for (let offset = 1; offset <= 3; offset += 1) {
+      const value = bestInventoryToken(lines[index + offset] || "");
       if (value && (!validator || validator(value))) return value;
     }
   }
