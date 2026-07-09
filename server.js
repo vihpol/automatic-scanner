@@ -296,8 +296,11 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
         ["serial-center.jpg", ["-resize", "2200x2200>", "-gravity", "center", "-crop", "92%x70%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1"]]
       ]
     : [
-        ["enhanced.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
-        ["center.jpg", ["-resize", "2400x2400>", "-gravity", "center", "-crop", "94%x76%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1.2"]]
+        ["enhanced.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
+        ["dark-boost.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-brightness-contrast", "22x34", "-normalize", "-sharpen", "0x1.3"]],
+        ["glare-cut.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]],
+        ["threshold.jpg", ["-resize", "2800x2800>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]],
+        ["center.jpg", ["-resize", "2800x2800>", "-gravity", "center", "-crop", "96%x80%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]]
       ];
 
   for (const spec of variantSpecs) {
@@ -361,7 +364,8 @@ function parseInventoryText(text, knownModel = "") {
 
   const lines = getOcrLines(normalized);
   const scannedModelNumber = findValueFromLine(lines, /\bmodel\b/i);
-  const modelNumber = scannedModelNumber || knownModel;
+  const scannedModelNearby = findValueNearLabel(lines, /\bmodel\b/i, isLikelyModelToken);
+  const modelNumber = scannedModelNumber || scannedModelNearby || knownModel;
   const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
@@ -377,7 +381,7 @@ function parseInventoryText(text, knownModel = "") {
     .filter((candidate) => !isLikelyModelOrProduct(candidate))
     .slice()
     .sort((a, b) => b.length - a.length)[0] || "";
-  const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial) || "";
+  const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
   const resolvedModel = cleanInventoryValue(modelNumber || fallbackModel);
   const resolvedSerial = cleanInventoryValue(serialNumber || fallbackSerial);
@@ -412,19 +416,19 @@ function findValueFromLine(lines, labelPattern) {
   return "";
 }
 
-function findValueNearLabel(lines, labelPattern) {
+function findValueNearLabel(lines, labelPattern, validator) {
   for (let index = 0; index < lines.length; index += 1) {
     if (!labelPattern.test(lines[index])) continue;
 
     const sameLine = valueAfterLabel(lines[index], labelPattern);
-    if (sameLine) return sameLine;
+    if (sameLine && (!validator || validator(sameLine))) return sameLine;
 
     for (let offset = 1; offset <= 2; offset += 1) {
       const nextLine = lines[index + offset] || "";
       if (looksLikeLabelLine(nextLine)) continue;
 
       const value = bestInventoryToken(nextLine);
-      if (value) return value;
+      if (value && (!validator || validator(value))) return value;
     }
   }
 
@@ -494,6 +498,11 @@ function isLikelyModelOrProduct(value) {
   return /^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
     /-ACF$/i.test(value) ||
     /^(?:MODEL|PRODUCT|SERIAL|NUMBER|SWITCH)$/i.test(value);
+}
+
+function isLikelyModelToken(value) {
+  return /^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) &&
+    !/-ACF$/i.test(value);
 }
 
 function cleanInventoryValue(value) {

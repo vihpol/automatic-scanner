@@ -432,7 +432,7 @@ function readPreparedImage(file) {
     reader.onload = () => {
       const image = new Image();
       image.onload = () => {
-        const maxDimension = 2200;
+        const maxDimension = 3000;
         resolve(createEnhancedDataUrl(image, image.width, image.height, maxDimension));
       };
       image.onerror = reject;
@@ -443,7 +443,7 @@ function readPreparedImage(file) {
   });
 }
 
-function createEnhancedDataUrl(source, sourceWidth, sourceHeight, maxDimension = 2600) {
+function createEnhancedDataUrl(source, sourceWidth, sourceHeight, maxDimension = 3200) {
   const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
   captureCanvas.width = Math.max(1, Math.round(sourceWidth * scale));
   captureCanvas.height = Math.max(1, Math.round(sourceHeight * scale));
@@ -455,7 +455,7 @@ function createEnhancedDataUrl(source, sourceWidth, sourceHeight, maxDimension =
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(source, 0, 0, captureCanvas.width, captureCanvas.height);
-  return captureCanvas.toDataURL("image/jpeg", 0.92);
+  return captureCanvas.toDataURL("image/jpeg", 0.96);
 }
 
 function estimateImageBrightness(image) {
