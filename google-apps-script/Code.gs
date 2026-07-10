@@ -77,7 +77,7 @@ function getOrCreateSheet(spreadsheet, sheetName) {
 }
 
 function appendScanByModel(sheet, rawModelNumber, rawSerialNumber) {
-  const modelNumber = cleanValue(rawModelNumber);
+  const modelNumber = normalizeModelNumber(rawModelNumber);
   const serialNumber = cleanValue(rawSerialNumber);
 
   if (!modelNumber) {
@@ -190,7 +190,17 @@ function normalizeValue(value) {
 }
 
 function modelKey(value) {
-  return normalizeValue(value).replace(/[^a-z0-9]/g, "");
+  return normalizeValue(normalizeModelNumber(value)).replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeModelNumber(value) {
+  let normalized = cleanValue(value).toUpperCase().replace(/\s+/g, "");
+
+  normalized = normalized
+    .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
+    .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2");
+
+  return normalized;
 }
 
 function jsonResponse(data) {

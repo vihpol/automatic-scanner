@@ -403,7 +403,7 @@ function parseInventoryText(text, knownModel = "") {
     .sort((a, b) => b.length - a.length)[0] || "";
   const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
-  const resolvedModel = cleanInventoryValue(modelNumber || fallbackModel);
+  const resolvedModel = normalizeModelNumber(modelNumber || fallbackModel);
   const resolvedSerial = cleanInventoryValue(serialNumber || fallbackSerial);
   const foundBoth = Boolean(resolvedModel && resolvedSerial);
   const foundLabeledModel = Boolean(scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
@@ -569,6 +569,16 @@ function isLikelyModelToken(value) {
     !/-ACF$/i.test(value);
 }
 
+function normalizeModelNumber(value) {
+  let normalized = cleanInventoryValue(value);
+
+  normalized = normalized
+    .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
+    .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2");
+
+  return normalized;
+}
+
 function cleanInventoryValue(value) {
   let cleaned = String(value || "")
     .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, "")
@@ -636,7 +646,7 @@ function parseJsonObject(text) {
 function normalizeScan(body) {
   return {
     timestamp: new Date().toISOString(),
-    modelNumber: String(body.modelNumber || "").trim(),
+    modelNumber: normalizeModelNumber(body.modelNumber || ""),
     serialNumber: String(body.serialNumber || "").trim(),
     notes: String(body.notes || "").trim(),
     source: String(body.source || "phone-scanner").trim(),
