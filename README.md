@@ -45,12 +45,13 @@ Apps Script can be deployed once and reused for different spreadsheets. The scan
    - `OPENAI_MODEL` optional, defaults to `gpt-4.1-mini`
    - `GOOGLE_APPS_SCRIPT_URL`
    - `GOOGLE_APPS_SCRIPT_SECRET`
-11. Start the scanner, open **Sheet destination**, paste the Google Sheet URL or ID, and tap **Save Sheet**.
+11. Start the scanner, open **Google Sheet > Change**, paste the Google Sheet URL or ID, and tap **Save Sheet**.
 
-The sheet tab should have this header row:
+The Apps Script writes each model number at the top of its own column and puts that model's serial numbers underneath it. If a model already exists, the serial is added under that same model column. If the model is new, it uses the next empty column.
 
 ```text
-Timestamp | Model Number | Serial Number | Notes | Source
+SW-800G-64-TH5 | M2-W6940-64OC | ...
+GT1G005969051 | GT6G031308532 | ...
 ```
 
 The old service-account Google Sheets setup is still supported, but Apps Script is easier for this scan station.
@@ -82,7 +83,7 @@ The photo picker works on mobile browsers without embedding a live camera stream
 1. Sean taps **Scan Label** on his phone.
 2. The phone camera captures a clear label photo.
 3. The browser compresses the photo and sends it to `/api/extract`.
-4. The backend extracts text with local Tesseract OCR. If `OPENAI_API_KEY` is configured, it uses OpenAI vision extraction instead.
+4. The backend extracts the label fields with Gemini vision when `GEMINI_API_KEY` is configured, then falls back to OpenAI or local OCR if needed.
 5. The extracted model number and serial number are filled into the form.
 6. Sean reviews or edits the model and serial fields.
 7. The app only enables submission when both model and serial are present.

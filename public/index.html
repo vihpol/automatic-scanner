@@ -102,13 +102,20 @@
         <div class="sheet-summary" id="sheetSummary">Using default sheet.</div>
         <div class="sheet-setup hidden" id="sheetSetup">
           <label>
-            Apps Script URL
-            <input id="appsScriptUrl" name="appsScriptUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+            Google Sheet link
+            <input id="sheetLink" name="sheetLink" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/d/...">
           </label>
           <label>
             Tab name
             <input id="sheetTab" name="sheetTab" autocomplete="off" placeholder="Scans">
           </label>
+          <details class="advanced-sheet-settings">
+            <summary>Advanced</summary>
+            <label>
+              Apps Script URL
+              <input id="appsScriptUrl" name="appsScriptUrl" autocomplete="off" placeholder="Using server default">
+            </label>
+          </details>
           <div class="sheet-actions">
             <button class="primary-button compact-button" id="saveSheetSetup" type="button">Save Sheet</button>
             <button class="tool-button compact-button" id="clearSheetSetup" type="button">Use Default</button>

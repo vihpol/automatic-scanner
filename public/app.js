@@ -34,6 +34,7 @@ const autoSave = document.querySelector("#autoSave");
 const sameModel = document.querySelector("#sameModel");
 const toggleSheetSetup = document.querySelector("#toggleSheetSetup");
 const sheetSetup = document.querySelector("#sheetSetup");
+const sheetLink = document.querySelector("#sheetLink");
 const appsScriptUrl = document.querySelector("#appsScriptUrl");
 const sheetTab = document.querySelector("#sheetTab");
 const saveSheetSetup = document.querySelector("#saveSheetSetup");
@@ -388,6 +389,7 @@ async function saveScan() {
   };
   const sheetSettings = getSheetSettings();
   if (sheetSettings.appsScriptUrl) payload.appsScriptUrl = sheetSettings.appsScriptUrl;
+  if (sheetSettings.sheetId) payload.sheetId = sheetSettings.sheetId;
   if (sheetSettings.sheetTab) payload.sheetTab = sheetSettings.sheetTab;
 
   const errors = getValidationErrors(payload);
@@ -440,6 +442,7 @@ function toggleSheetPanel() {
 
 function restoreSheetSettings() {
   const settings = getSheetSettings();
+  sheetLink.value = settings.sheetLink || "";
   appsScriptUrl.value = settings.appsScriptUrl || "";
   sheetTab.value = settings.sheetTab || "Scans";
   updateSheetSummary(settings);
@@ -454,8 +457,15 @@ function getSheetSettings() {
 }
 
 function saveSheetSettings() {
+  const link = sheetLink.value.trim();
   const url = appsScriptUrl.value.trim();
   const tab = sheetTab.value.trim() || "Scans";
+  const sheetId = extractSheetId(link);
+
+  if (link && !sheetId) {
+    setSheetStatus("Paste a Google Sheet link or spreadsheet ID.", false);
+    return;
+  }
 
   if (url && !isAppsScriptUrl(url)) {
     setSheetStatus("Paste a Google Apps Script web app URL ending in /exec.", false);
@@ -463,16 +473,19 @@ function saveSheetSettings() {
   }
 
   const settings = {
+    sheetLink: link,
+    sheetId,
     appsScriptUrl: url,
     sheetTab: tab
   };
   localStorage.setItem(SHEET_SETUP_KEY, JSON.stringify(settings));
   updateSheetSummary(settings);
-  setSheetStatus(url ? "Sheet saved for this phone." : "Using default sheet.", true);
+  setSheetStatus(sheetId ? "Google Sheet saved for this phone." : "Using default sheet.", true);
 }
 
 function clearSheetSettings() {
   localStorage.removeItem(SHEET_SETUP_KEY);
+  sheetLink.value = "";
   appsScriptUrl.value = "";
   sheetTab.value = "Scans";
   updateSheetSummary({});
@@ -481,8 +494,10 @@ function clearSheetSettings() {
 
 function updateSheetSummary(settings) {
   const tab = settings.sheetTab || "Scans";
-  sheetSummary.textContent = settings.appsScriptUrl
-    ? `Custom sheet saved. Tab: ${tab}.`
+  sheetSummary.textContent = settings.sheetId
+    ? `Custom Google Sheet saved. Tab: ${tab}.`
+    : settings.appsScriptUrl
+      ? `Custom script saved. Tab: ${tab}.`
     : "Using default sheet.";
 }
 
@@ -500,6 +515,20 @@ function isAppsScriptUrl(value) {
   } catch (error) {
     return false;
   }
+}
+
+function extractSheetId(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  const urlMatch = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (urlMatch) return urlMatch[1];
+
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(text)) {
+    return text;
+  }
+
+  return "";
 }
 
 function getSavedMessage(sheet) {

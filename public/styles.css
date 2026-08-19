@@ -144,6 +144,22 @@ h2 {
   gap: 12px;
 }
 
+.advanced-sheet-settings {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.advanced-sheet-settings summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.advanced-sheet-settings label {
+  margin-top: 10px;
+}
+
 .compact-button {
   min-height: 42px;
   padding: 0 16px;
