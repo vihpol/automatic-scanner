@@ -641,10 +641,10 @@ function cropImageDataUrl(imageDataUrl, crop) {
       const centerY = image.height * (Number(crop.y || 50) / 100);
       const sourceX = clamp(centerX - sourceWidth / 2, 0, image.width - sourceWidth);
       const sourceY = clamp(centerY - sourceHeight / 2, 0, image.height - sourceHeight);
-      const outputScale = Math.min(2.4, 2600 / Math.max(sourceWidth, sourceHeight));
+      const outputScale = Math.min(1.8, 1900 / Math.max(sourceWidth, sourceHeight));
 
-      captureCanvas.width = Math.max(900, Math.round(sourceWidth * outputScale));
-      captureCanvas.height = Math.max(520, Math.round(sourceHeight * outputScale));
+      captureCanvas.width = Math.max(820, Math.round(sourceWidth * outputScale));
+      captureCanvas.height = Math.max(480, Math.round(sourceHeight * outputScale));
 
       const context = captureCanvas.getContext("2d");
       context.filter = "brightness(1.18) contrast(1.24) saturate(0.75)";

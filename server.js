@@ -317,47 +317,71 @@ function runTesseract(imagePath) {
 
 async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
   const imagePaths = [imagePath];
-  const variantSpecs = options.serialOnly
+  const fastVariantSpecs = options.serialOnly
     ? [
         ["serial-center.jpg", ["-resize", "2200x2200>", "-gravity", "center", "-crop", "94%x66%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-sharpen", "0x1"]]
       ]
     : [
-        ["enhanced.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
-        ["label-band.jpg", ["-resize", "2400x2400>", "-gravity", "center", "-crop", "96%x68%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]],
-        ["bottom-label.jpg", ["-resize", "2600x2600>", "-gravity", "south", "-crop", "96%x55%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.4"]],
-        ["middle-bottom-label.jpg", ["-resize", "2600x2600>", "-gravity", "south", "-crop", "96%x70%+0+0", "+repage", "-colorspace", "Gray", "-brightness-contrast", "12x24", "-normalize", "-sharpen", "0x1.2"]],
-        ["glare-label.jpg", ["-resize", "2600x2600>", "-gravity", "center", "-crop", "90%x72%+0+0", "+repage", "-colorspace", "Gray", "-contrast-stretch", "6%x16%", "-sigmoidal-contrast", "7,45%", "-sharpen", "0x1.5"]],
-        ["glare-cut.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]],
-        ["dark-boost.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-brightness-contrast", "22x34", "-normalize", "-sharpen", "0x1.3"]],
-        ["threshold.jpg", ["-resize", "2200x2200>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]]
+        ["enhanced.jpg", ["-resize", "1900x1900>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
+        ["label-band.jpg", ["-resize", "1900x1900>", "-gravity", "center", "-crop", "96%x70%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]],
+        ["dark-boost.jpg", ["-resize", "1900x1900>", "-colorspace", "Gray", "-brightness-contrast", "20x30", "-normalize", "-sharpen", "0x1.2"]]
       ];
+  const fallbackVariantSpecs = options.serialOnly
+    ? []
+    : [
+        ["bottom-label.jpg", ["-resize", "2100x2100>", "-gravity", "south", "-crop", "96%x58%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.3"]],
+        ["middle-bottom-label.jpg", ["-resize", "2100x2100>", "-gravity", "south", "-crop", "96%x72%+0+0", "+repage", "-colorspace", "Gray", "-brightness-contrast", "12x24", "-normalize", "-sharpen", "0x1.2"]],
+        ["glare-label.jpg", ["-resize", "2600x2600>", "-gravity", "center", "-crop", "90%x72%+0+0", "+repage", "-colorspace", "Gray", "-contrast-stretch", "6%x16%", "-sigmoidal-contrast", "7,45%", "-sharpen", "0x1.5"]],
+        ["threshold.jpg", ["-resize", "1800x1800>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]]
+      ];
+  const results = [];
 
+  const originalRead = await runOcrWave(imagePaths, ["6"], options.knownModel, results, 10000);
+  if (originalRead) return originalRead;
+
+  await addImageVariants(imagePath, tempDir, fastVariantSpecs, imagePaths);
+  const fastRead = await runOcrWave(imagePaths.slice(1), ["6"], options.knownModel, results, 12000);
+  if (fastRead) return fastRead;
+
+  const fallbackPaths = [];
+  await addImageVariants(imagePath, tempDir, fallbackVariantSpecs, fallbackPaths);
+  const fallbackRead = await runOcrWave(fallbackPaths, ["6"], options.knownModel, results, 14000);
+  if (fallbackRead) return fallbackRead;
+
+  const sparseRead = await runOcrWave(imagePaths.slice(0, 3), ["11"], options.knownModel, results, 12000);
+  if (sparseRead) return sparseRead;
+
+  return uniqueLines(results.join("\n")).join("\n").trim();
+}
+
+async function addImageVariants(imagePath, tempDir, variantSpecs, imagePaths) {
   for (const spec of variantSpecs) {
     const variantPath = path.join(tempDir, spec[0]);
     if (await makeImageVariant(imagePath, variantPath, spec[1])) {
       imagePaths.push(variantPath);
     }
   }
+}
 
-  const modes = options.serialOnly ? ["6"] : ["6", "11"];
-  const results = [];
+async function runOcrWave(imagePaths, modes, knownModel, results, timeout) {
+  for (const mode of modes) {
+    const wave = await Promise.all(
+      imagePaths.map((candidatePath) => runTesseractMode(candidatePath, mode, timeout))
+    );
 
-  for (const candidatePath of imagePaths) {
-    for (const mode of modes) {
-      const text = await runTesseractMode(candidatePath, mode);
+    for (const text of wave) {
       if (!text) continue;
-
       results.push(text);
 
       const combined = uniqueLines(results.join("\n")).join("\n").trim();
-      const parsed = parseInventoryText(combined, options.knownModel);
+      const parsed = parseInventoryText(combined, knownModel);
       if (hasCompleteConfidentRead(parsed)) {
         return combined;
       }
     }
   }
 
-  return uniqueLines(results.join("\n")).join("\n").trim();
+  return "";
 }
 
 async function makeImageVariant(inputPath, outputPath, operations) {
@@ -367,9 +391,9 @@ async function makeImageVariant(inputPath, outputPath, operations) {
   return result.ok && fs.existsSync(outputPath);
 }
 
-async function runTesseractMode(imagePath, mode) {
+async function runTesseractMode(imagePath, mode, timeout = 15000) {
   const result = await execFileQuiet("tesseract", [imagePath, "stdout", "--psm", mode], {
-    timeout: 45000,
+    timeout,
     maxBuffer: 1024 * 1024
   });
   return result.ok ? result.stdout.trim() : "";
@@ -416,9 +440,10 @@ function parseInventoryText(text, knownModel = "") {
   const scannedModelNearby = findValueNearLabel(lines, /\bmodel\b/i, isLikelyModelToken);
   const modelNumber = anchoredModel || scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
   const resolvedModel = normalizeModelNumber(modelNumber);
+  const switchSerialPattern = /\b(?:switch|witch|swltch|svvitch)\s*(?:s\s*\/?\s*n|8\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i;
   const switchSerialFromText = findSwitchSerialValue(lines, resolvedModel);
-  const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
-  const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
+  const switchSerialNumber = findValueFromLine(lines, switchSerialPattern);
+  const switchSerialNearby = findValueNearLabel(lines, switchSerialPattern);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const serialNumber = switchSerialFromText || switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
@@ -445,16 +470,17 @@ function parseInventoryText(text, knownModel = "") {
   return {
     modelNumber: finalModel,
     serialNumber: resolvedSerial,
-    confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels),
+    confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, finalModel, resolvedSerial),
     notes: foundBoth
       ? "Read from photo. Review before saving."
       : "Photo scan could not confidently find both fields. Type missing values before saving."
   };
 }
 
-function getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels) {
+function getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, modelNumber, serialNumber) {
   if (!foundBoth) return 0.25;
   if (foundLabeledModel && foundLabeledSerial) return 0.84;
+  if (foundLabeledSerial && isLikelyModelToken(modelNumber) && /^GT[A-Z0-9]{11}$/i.test(serialNumber)) return 0.82;
   if (foundLabeledModel || foundLabeledSerial) return 0.62;
   return usedLabels ? 0.52 : 0.38;
 }
@@ -515,7 +541,7 @@ function findSwitchSerialValue(lines, modelNumber) {
   const matches = [];
 
   for (const line of lines) {
-    const match = line.match(/\bswitch[ \t]*[s8][ \t]*\/?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
+    const match = line.match(/\b(?:switch|witch|swltch|svvitch)[ \t]*[s8][ \t]*\/?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
     if (!match) continue;
 
     const value = pickSwitchSerialValue(match[1], modelNumber);
