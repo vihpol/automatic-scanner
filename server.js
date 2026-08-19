@@ -510,7 +510,7 @@ function parseInventoryText(text, knownModel = "", options = {}) {
 function getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, modelNumber, serialNumber) {
   if (!foundBoth) return 0.25;
   if (foundLabeledModel && foundLabeledSerial) return 0.84;
-  if (foundLabeledSerial && isLikelyModelToken(modelNumber) && /^GT[A-Z0-9]{11}$/i.test(serialNumber)) return 0.82;
+  if (foundLabeledSerial && isLikelyModelToken(modelNumber) && isValidSerialNumber(serialNumber)) return 0.82;
   if (foundLabeledModel || foundLabeledSerial) return 0.62;
   return usedLabels ? 0.52 : 0.38;
 }
@@ -597,7 +597,7 @@ function pickSwitchSerialValue(text, modelNumber = "") {
     if (directSerial) return directSerial;
 
     const nextToken = tokens[index + 1] || "";
-    if (/^GT[A-Z0-9]{2,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
+    if (/^[A-Z0-9]{3,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
       const joinedSerial = normalizeSerialNumber(token + nextToken, modelNumber);
       if (joinedSerial) return joinedSerial;
     }
@@ -708,6 +708,7 @@ function findBestSerialCandidate(lines) {
 function scoreSerialToken(value) {
   let score = value.length;
   if (/^GT[A-Z0-9]{8,}$/i.test(value)) score += 80;
+  if (/^[A-Z0-9]{10,16}$/i.test(value) && /[A-Z]/i.test(value) && /\d/.test(value)) score += 45;
   if (/^3[SR][A-Z0-9]{10,}$/i.test(value)) score += 60;
   if (/^[A-Z0-9]{12,}$/i.test(value)) score += 25;
   if (isLikelyModelOrProduct(value)) score -= 120;
@@ -750,7 +751,8 @@ function normalizeSerialNumber(value, modelNumber = "") {
   const cleaned = cleanInventoryValue(value);
   const match = cleaned.match(/(?:^|[^A-Z0-9])?(GT[A-Z0-9]{11,12})/i) ||
     cleaned.match(/(?:^|[^A-Z0-9])?([8B]T[A-Z0-9]{11,12})/i) ||
-    cleaned.match(/(?:^|[^A-Z0-9])?(375[A-Z0-9]{10})/i);
+    cleaned.match(/(?:^|[^A-Z0-9])?(375[A-Z0-9]{10})/i) ||
+    cleaned.match(/(?:^|[^A-Z0-9])?([A-Z0-9]{10,16})(?:$|[^A-Z0-9])/i);
 
   if (!match) return "";
 
@@ -770,7 +772,9 @@ function normalizeSerialNumber(value, modelNumber = "") {
     }
   }
 
-  return /^GT[A-Z0-9]{11,12}$/i.test(serial) ? serial : "";
+  if (isLikelyModelOrProduct(serial)) return "";
+  if (!/[A-Z]/i.test(serial) || !/\d/.test(serial)) return "";
+  return /^[A-Z0-9]{10,16}$/i.test(serial) ? serial : "";
 }
 
 function cleanInventoryValue(value) {
@@ -870,7 +874,7 @@ function validateScan(scan) {
 }
 
 function isValidSerialNumber(value) {
-  return /^GT[A-Z0-9]{11,12}$/i.test(normalizeSerialNumber(value));
+  return /^[A-Z0-9]{10,16}$/i.test(normalizeSerialNumber(value));
 }
 
 async function appendScanToSheet(scan) {
