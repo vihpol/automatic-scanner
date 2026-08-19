@@ -249,6 +249,7 @@ async function extractScanWithTesseract(imageDataUrl, options = {}) {
     return {
       modelNumber: parsed.modelNumber,
       serialNumber: parsed.serialNumber,
+      serialCandidates: parsed.serialCandidates || [],
       confidence: parsed.confidence,
       notes: parsed.notes,
       rawText: text
@@ -480,7 +481,8 @@ function parseInventoryText(text, knownModel = "", options = {}) {
   const switchSerialNearby = findValueNearLabel(lines, switchSerialPattern);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
-  const serialNumber = switchSerialFromText || switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
+  const serialNumber = switchSerialFromText || switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines, resolvedModel);
+  const serialCandidates = findSerialCandidates(lines, resolvedModel);
 
   const candidates = options.skipFallbackCandidates ? [] : getInventoryTokens(normalized);
 
@@ -488,7 +490,9 @@ function parseInventoryText(text, knownModel = "", options = {}) {
     .filter((candidate) => !isLikelyModelOrProduct(candidate))
     .slice()
     .sort((a, b) => b.length - a.length)[0] || "";
-  const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
+  const fallbackModel = candidates
+    .map((candidate) => normalizeModelNumber(candidate))
+    .find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
   const finalModel = resolvedModel || normalizeModelNumber(fallbackModel);
   const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, finalModel);
@@ -500,11 +504,30 @@ function parseInventoryText(text, knownModel = "", options = {}) {
   return {
     modelNumber: finalModel,
     serialNumber: resolvedSerial,
+    serialCandidates,
     confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, finalModel, resolvedSerial),
     notes: foundBoth
       ? "Read from photo. Review before saving."
       : "Photo scan could not confidently find both fields. Type missing values before saving."
   };
+}
+
+function findSerialCandidates(lines, modelNumber = "") {
+  const candidates = [];
+
+  for (const line of lines) {
+    if (/\b(product|model|quantity|weight|version|remark)\b/i.test(line)) continue;
+    if (looksLikeSwitchSerialLine(line)) {
+      collectSerialCandidates(line, modelNumber).forEach((value) => candidates.push(value));
+      continue;
+    }
+    collectSerialCandidates(line, modelNumber)
+      .filter((value) => /^GT[A-Z0-9]{8,}$/i.test(value) || /^3[SR][A-Z0-9]{10,}$/i.test(value))
+      .filter((value) => scoreSerialToken(value) >= 55)
+      .forEach((value) => candidates.push(value));
+  }
+
+  return rankSerialCandidates(candidates).slice(0, 4);
 }
 
 function getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, modelNumber, serialNumber) {
@@ -571,39 +594,71 @@ function findSwitchSerialValue(lines, modelNumber) {
   const matches = [];
 
   for (const line of lines) {
-    const match = line.match(/\b(?:switch|witch|swltch|svvitch)[ \t]*[s8][ \t]*\/?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
-    if (!match) continue;
+    if (!looksLikeSwitchSerialLine(line)) continue;
 
-    const value = pickSwitchSerialValue(match[1], modelNumber);
-    if (value && !isLikelyModelOrProduct(value)) {
-      matches.push(value);
+    const match = line.match(/\b(?:switch|witch|swltch|svvitch|lwilch|bwilch|awwilch|lw\s*ch)[ \t]*[s568o]?[ \t]*[\/i]?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
+    const values = collectSerialCandidates(match ? match[1] : line, modelNumber);
+    for (const value of values) {
+      if (value && !isLikelyModelOrProduct(value)) {
+        matches.push(value);
+      }
     }
   }
 
-  return matches.sort((a, b) => scoreSerialToken(b) - scoreSerialToken(a))[0] || "";
+  return pickBestSerialVote(matches) || "";
+}
+
+function looksLikeSwitchSerialLine(line) {
+  return /\b(?:switch|witch|swltch|svvitch|lwilch|bwilch|awwilch|lw\s*ch)\b/i.test(line) ||
+    /\b[s568o][ \t]*[\/i]?[ \t]*n\b/i.test(line);
 }
 
 function pickSwitchSerialValue(text, modelNumber = "") {
+  return pickBestSerialVote(collectSerialCandidates(text, modelNumber)) || "";
+}
+
+function collectSerialCandidates(text, modelNumber = "") {
   const tokens = String(text || "")
     .split(/[^A-Z0-9._/-]+/i)
     .map((value) => cleanInventoryValue(value))
     .filter(Boolean);
+  const candidates = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (/^(?:MADE|MADC|WMADC|IN|MALAYSIA|PRODUCT|QUANTITY|GROSS|WEIGHT|VERSION|REMARK)$/i.test(token)) break;
 
     const directSerial = normalizeSerialNumber(token, modelNumber);
-    if (directSerial) return directSerial;
+    if (directSerial) candidates.push(directSerial);
 
     const nextToken = tokens[index + 1] || "";
     if (/^[A-Z0-9]{3,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
       const joinedSerial = normalizeSerialNumber(token + nextToken, modelNumber);
-      if (joinedSerial) return joinedSerial;
+      if (joinedSerial) candidates.push(joinedSerial);
     }
   }
 
-  return normalizeSerialNumber(bestInventoryToken(text), modelNumber);
+  const best = normalizeSerialNumber(bestInventoryToken(text), modelNumber);
+  if (best) candidates.push(best);
+  return candidates;
+}
+
+function pickBestSerialVote(candidates) {
+  return rankSerialCandidates(candidates)[0] || "";
+}
+
+function rankSerialCandidates(candidates) {
+  const counts = new Map();
+  for (const candidate of candidates) {
+    counts.set(candidate, (counts.get(candidate) || 0) + 1);
+  }
+
+  return Array.from(counts.keys())
+    .sort((a, b) => {
+      const countDiff = (counts.get(b) || 0) - (counts.get(a) || 0);
+      if (countDiff) return countDiff;
+      return scoreSerialToken(b) - scoreSerialToken(a);
+    });
 }
 
 function findValueFromLine(lines, labelPattern) {
@@ -688,21 +743,18 @@ function scoreInventoryToken(value) {
   return score;
 }
 
-function findBestSerialCandidate(lines) {
+function findBestSerialCandidate(lines, modelNumber = "") {
   const tokens = [];
 
   for (const line of lines) {
     if (/\b(product|model|quantity|weight|version|remark)\b/i.test(line)) continue;
 
-    String(line || "")
-      .split(/[^A-Z0-9._/-]+/i)
-      .map((value) => cleanInventoryValue(value))
-      .filter((value) => value.length >= 8)
+    collectSerialCandidates(line, modelNumber)
       .filter((value) => !isLikelyModelOrProduct(value))
       .forEach((value) => tokens.push(value));
   }
 
-  return tokens.sort((a, b) => scoreSerialToken(b) - scoreSerialToken(a))[0] || "";
+  return pickBestSerialVote(tokens);
 }
 
 function scoreSerialToken(value) {
@@ -730,13 +782,17 @@ function isLikelyModelToken(value) {
 }
 
 function normalizeModelNumber(value) {
-  let normalized = cleanInventoryValue(value);
+  let normalized = cleanInventoryValue(value).replace(/[._]+/g, "-");
 
   normalized = normalized
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
+    .replace(/^SW-(\d{3})G-0?4-THE?A?G?E?$/i, "SW-$1G-64-TH5")
+    .replace(/^SW-(\d{3})G-64-THE?A?G?E?$/i, "SW-$1G-64-TH5")
+    .replace(/^SW-(\d{3})G-0?4-TH[58S](?:-ACF)?$/i, "SW-$1G-64-TH5")
     .replace(/^SW-(\d{3})0(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-64-TH$/, "SW-$1G-64-TH5")
+    .replace(/^SW-(\d{3})G-64-THS$/, "SW-$1G-64-TH5")
     .replace(/^M2-W[8369](?:340|940)-64[0O]C$/, "M2-W6940-64OC")
     .replace(/^M2-W8(940-)/, "M2-W6$1")
     .replace(/^M2-W6(940-)64$/, "M2-W6$164OC")

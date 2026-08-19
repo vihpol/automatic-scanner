@@ -394,6 +394,28 @@ input:focus {
   font-weight: 900;
 }
 
+.candidate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.candidate-button {
+  min-height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+  font-weight: 900;
+  padding: 8px 10px;
+}
+
+.candidate-button:hover {
+  border-color: var(--accent);
+}
+
 .form-status.ready {
   color: var(--accent);
 }

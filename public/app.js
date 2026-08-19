@@ -28,6 +28,7 @@ const formStatus = document.querySelector("#formStatus");
 const progressBar = document.querySelector("#progressBar");
 const modelNumber = document.querySelector("#modelNumber");
 const serialNumber = document.querySelector("#serialNumber");
+const serialCandidates = document.querySelector("#serialCandidates");
 const rapidMode = document.querySelector("#rapidMode");
 const autoSave = document.querySelector("#autoSave");
 const sameModel = document.querySelector("#sameModel");
@@ -520,10 +521,13 @@ function getSavedMessage(sheet) {
 async function applyExtraction(extraction) {
   const currentModel = modelNumber.value.trim();
   const scannedModel = cleanScanValue(extraction.modelNumber);
-  modelNumber.value = scannedModel || currentModel;
-  serialNumber.value = extraction.serialNumber || "";
-
+  const candidates = getSerialCandidates(extraction);
   const confidence = Number(extraction.confidence || 0);
+  const needsSerialChoice = candidates.length > 1 && confidence < 0.84;
+  modelNumber.value = scannedModel || currentModel;
+  serialNumber.value = needsSerialChoice ? "" : extraction.serialNumber || "";
+  renderSerialCandidates(candidates);
+
   const confidencePercent = Math.round(confidence * 100);
   supportStatus.textContent = confidencePercent ? `${confidencePercent}% read` : "Read";
   setProgress(72);
@@ -536,7 +540,7 @@ async function applyExtraction(extraction) {
 
   if (missing.length > 0) {
     setProgress(0);
-    setFormStatus(`Review needed. ${missing.join(" ")}`, false);
+    setFormStatus(candidates.length > 0 ? "Review needed. Tap the correct switch S/N." : `Review needed. ${missing.join(" ")}`, false);
     extractPhoto.classList.remove("hidden");
     return;
   }
@@ -547,7 +551,35 @@ async function applyExtraction(extraction) {
     return;
   }
 
+  if (candidates.length > 1 && confidence < 0.84) {
+    setFormStatus("Review serial choices, then submit.", false);
+    return;
+  }
+
   setFormStatus("Ready to save.", true);
+}
+
+function getSerialCandidates(extraction) {
+  const values = Array.isArray(extraction.serialCandidates) ? extraction.serialCandidates : [];
+  return Array.from(new Set(values.map((value) => cleanScanValue(value)).filter(isValidSwitchSerial))).slice(0, 4);
+}
+
+function renderSerialCandidates(candidates) {
+  serialCandidates.innerHTML = "";
+  serialCandidates.classList.toggle("hidden", candidates.length === 0);
+
+  for (const candidate of candidates) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "candidate-button";
+    button.textContent = candidate;
+    button.addEventListener("click", () => {
+      serialNumber.value = candidate;
+      updateValidation();
+      setFormStatus("Ready to save.", true);
+    });
+    serialCandidates.appendChild(button);
+  }
 }
 
 async function applyFastBarcodeRead() {
@@ -592,6 +624,7 @@ function clearPhoto() {
     cameraPreview.classList.remove("visible");
   }
   photoPlaceholder.classList.remove("hidden");
+  renderSerialCandidates([]);
   extractPhoto.disabled = true;
   extractPhoto.classList.add("hidden");
   if (!rapidMode.checked || state.savedCount === 0) {
