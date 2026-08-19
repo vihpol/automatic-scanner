@@ -491,8 +491,7 @@ function parseInventoryText(text, knownModel = "", options = {}) {
   const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
   const finalModel = resolvedModel || normalizeModelNumber(fallbackModel);
-  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, finalModel) ||
-    cleanInventoryValue(serialNumber || fallbackSerial);
+  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, finalModel);
   const foundBoth = Boolean(finalModel && resolvedSerial);
   const foundLabeledModel = Boolean(anchoredModel || scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
   const foundLabeledSerial = Boolean(switchSerialFromText || switchSerialNumber || switchSerialNearby);
@@ -736,6 +735,7 @@ function normalizeModelNumber(value) {
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
     .replace(/^SW-(\d{3})0(-)/, "SW-$1G$2")
+    .replace(/^SW-(\d{3})G-64-TH$/, "SW-$1G-64-TH5")
     .replace(/^M2-W[8369](?:340|940)-64[0O]C$/, "M2-W6940-64OC")
     .replace(/^M2-W8(940-)/, "M2-W6$1")
     .replace(/^M2-W6(940-)64$/, "M2-W6$164OC")
@@ -859,12 +859,18 @@ function validateScan(scan) {
 
   if (!scan.serialNumber) {
     errors.push("Serial number is required.");
+  } else if (!isValidSerialNumber(scan.serialNumber)) {
+    errors.push("Serial number must look like a switch S/N.");
   }
 
   return {
     ok: errors.length === 0,
     errors
   };
+}
+
+function isValidSerialNumber(value) {
+  return /^GT[A-Z0-9]{11}$/i.test(normalizeSerialNumber(value));
 }
 
 async function appendScanToSheet(scan) {

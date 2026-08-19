@@ -867,6 +867,9 @@ function getValidationErrors(payload) {
   const errors = [];
   if (!payload.modelNumber) errors.push("Model number is missing.");
   if (!payload.serialNumber) errors.push("Serial number is missing.");
+  if (payload.serialNumber && !isValidSwitchSerial(payload.serialNumber)) {
+    errors.push("Serial number must start with GT and be 13 characters.");
+  }
   if (
     sameModel &&
     sameModel.checked &&
@@ -877,6 +880,10 @@ function getValidationErrors(payload) {
     errors.push("Serial number looks like the model number.");
   }
   return errors;
+}
+
+function isValidSwitchSerial(value) {
+  return /^GT[A-Z0-9]{11}$/i.test(cleanScanValue(value).replace(/[^A-Z0-9]/g, ""));
 }
 
 function setFormStatus(message, ready) {
