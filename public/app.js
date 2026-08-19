@@ -266,7 +266,7 @@ async function extractFromPhoto() {
   } catch (error) {
     console.error(error);
     setProgress(0);
-    setFormStatus("Scan failed. Retake photo or type fields.", false);
+    setFormStatus(error.message || "Scan failed. Retake photo or type fields.", false);
     supportStatus.textContent = "Review";
     extractPhoto.classList.remove("hidden");
   } finally {

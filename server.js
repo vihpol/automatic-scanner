@@ -237,8 +237,13 @@ async function extractScanWithTesseract(imageDataUrl, options = {}) {
   const imagePath = path.join(tempDir, `label.${image.extension}`);
 
   try {
+    await assertOcrDependency("tesseract");
+    await assertOcrDependency("convert");
     fs.writeFileSync(imagePath, image.buffer);
     const text = await extractTextFromLabelImages(imagePath, tempDir, options);
+    if (!text) {
+      throw new Error("Photo reader returned no text. Check that the label is visible and OCR tools are installed on the VM.");
+    }
     const parsed = parseInventoryText(text, options.knownModel);
 
     return {
@@ -250,6 +255,17 @@ async function extractScanWithTesseract(imageDataUrl, options = {}) {
     };
   } finally {
     removeDirSafe(tempDir);
+  }
+}
+
+async function assertOcrDependency(command) {
+  const result = await execFileQuiet(command, ["--version"], {
+    timeout: 5000,
+    maxBuffer: 128 * 1024
+  });
+
+  if (!result.ok) {
+    throw new Error(`${command} is required on the VM for photo reading.`);
   }
 }
 
@@ -298,6 +314,9 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
     : [
         ["enhanced.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1"]],
         ["label-band.jpg", ["-resize", "2400x2400>", "-gravity", "center", "-crop", "96%x68%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.2"]],
+        ["bottom-label.jpg", ["-resize", "2600x2600>", "-gravity", "south", "-crop", "96%x55%+0+0", "+repage", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.4"]],
+        ["middle-bottom-label.jpg", ["-resize", "2600x2600>", "-gravity", "south", "-crop", "96%x70%+0+0", "+repage", "-colorspace", "Gray", "-brightness-contrast", "12x24", "-normalize", "-sharpen", "0x1.2"]],
+        ["glare-label.jpg", ["-resize", "2600x2600>", "-gravity", "center", "-crop", "90%x72%+0+0", "+repage", "-colorspace", "Gray", "-contrast-stretch", "6%x16%", "-sigmoidal-contrast", "7,45%", "-sharpen", "0x1.5"]],
         ["glare-cut.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]],
         ["dark-boost.jpg", ["-resize", "2400x2400>", "-colorspace", "Gray", "-brightness-contrast", "22x34", "-normalize", "-sharpen", "0x1.3"]],
         ["threshold.jpg", ["-resize", "2200x2200>", "-colorspace", "Gray", "-auto-level", "-threshold", "58%", "-sharpen", "0x0.8"]]
@@ -438,16 +457,37 @@ function findModelFromText(text) {
   const match = String(text || "").match(/\bmodel\s*[:;]?\s*[\r\n ]*([A-Z0-9][A-Z0-9._/-]{4,})/i);
   if (!match) return "";
 
-  const value = cleanInventoryValue(match[1]);
+  const value = normalizeModelNumber(match[1]);
   return isLikelyModelToken(value) ? value : "";
 }
 
 function findSwitchSerialFromText(text) {
-  const match = String(text || "").match(/\bswitch\s*s\s*\/?\s*n\s*[:;]?\s*([A-Z0-9][A-Z0-9._/-]{7,})/i);
+  const match = String(text || "").match(/\bswitch[ \t]*s[ \t]*\/?[ \t]*n[ \t]*[:;]?[ \t]*([^\r\n]+)/i);
   if (!match) return "";
 
-  const value = cleanInventoryValue(match[1]);
+  const value = pickSwitchSerialValue(match[1]);
   return isLikelyModelOrProduct(value) ? "" : value;
+}
+
+function pickSwitchSerialValue(text) {
+  const tokens = String(text || "")
+    .split(/[^A-Z0-9._/-]+/i)
+    .map((value) => cleanInventoryValue(value))
+    .filter(Boolean);
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (/^(?:MADE|IN|MALAYSIA|PRODUCT|QUANTITY|GROSS|WEIGHT|VERSION|REMARK)$/i.test(token)) break;
+
+    if (/^GT[A-Z0-9]{8,}$/i.test(token)) return token;
+
+    const nextToken = tokens[index + 1] || "";
+    if (/^GT[A-Z0-9]{2,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
+      return cleanInventoryValue(token + nextToken);
+    }
+  }
+
+  return bestInventoryToken(text);
 }
 
 function findValueFromLine(lines, labelPattern) {
@@ -560,13 +600,16 @@ function scoreSerialToken(value) {
 
 function isLikelyModelOrProduct(value) {
   return /^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
+    /^M\d+[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
     /-ACF$/i.test(value) ||
+    /-FA$/i.test(value) ||
     /^(?:MODEL|PRODUCT|SERIAL|NUMBER|SWITCH)$/i.test(value);
 }
 
 function isLikelyModelToken(value) {
-  return /^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) &&
-    !/-ACF$/i.test(value);
+  return (/^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
+    /^M\d+[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value)) &&
+    !/-(?:ACF|FA)$/i.test(value);
 }
 
 function normalizeModelNumber(value) {
