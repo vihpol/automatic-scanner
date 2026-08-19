@@ -246,6 +246,7 @@ async function extractScanWithGemini(imageDataUrl, options = {}) {
   const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
   const image = decodeImageDataUrl(imageDataUrl);
   const prompt = buildVisionExtractionPrompt(options.knownModel || "");
+  const imageParts = await buildGeminiImageParts(image);
   const response = await requestJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(options.apiKey)}`,
     {
@@ -263,12 +264,7 @@ async function extractScanWithGemini(imageDataUrl, options = {}) {
             role: "user",
             parts: [
               { text: prompt },
-              {
-                inlineData: {
-                  mimeType: image.mimeType,
-                  data: image.buffer.toString("base64")
-                }
-              }
+              ...imageParts
             ]
           }
         ]
@@ -291,14 +287,68 @@ function buildVisionExtractionPrompt(knownModel = "") {
   return [
     "You are reading a Micas/Arista switch package label for inventory.",
     "Return only JSON with keys: modelNumber, serialNumber, serialCandidates, confidence, notes.",
-    "Read modelNumber from the value directly under or after the label 'Model:'.",
-    "Read serialNumber only from the value directly after 'SWITCH S/N:' or visually equivalent OCR text.",
+    "The request may include the original label image plus enhanced copies for glare, darkness, blur, or plastic wrap. Compare all images and use the clearest view.",
+    "Read modelNumber from the value directly under or after the label 'Model:'. The model is usually on the next line below Model, not the Product ID line.",
+    "Read serialNumber only from the value directly after 'SWITCH S/N:' or visually equivalent OCR text. The switch serial can be any uppercase letter/digit code and does not have to start with GT.",
     "Ignore Product ID, FAN, POWER, CAN, ONIE, BIOS, Version, Remark, Quantity, Gross Weight, and all barcode labels not tied to SWITCH S/N.",
+    "If glare or darkness hides part of the SWITCH S/N value, use the readable characters and nearby context only when the whole value is clear.",
     "If the switch serial is unclear, set serialNumber to an empty string and put likely switch S/N candidates in serialCandidates.",
     "Do not invent missing characters. Prefer empty fields over guessing.",
     knownModel ? `Previously saved model: ${knownModel}. If this image shows a different Model value, return the model shown in the image.` : "",
     "confidence must be a number from 0 to 1."
   ].filter(Boolean).join(" ");
+}
+
+async function buildGeminiImageParts(image) {
+  const parts = [
+    {
+      inlineData: {
+        mimeType: image.mimeType,
+        data: image.buffer.toString("base64")
+      }
+    }
+  ];
+
+  if (/^(false|0|off)$/i.test(String(process.env.GEMINI_INCLUDE_ENHANCED || ""))) {
+    return parts;
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "automatic-scanner-gemini-"));
+  const inputPath = path.join(tempDir, `label.${image.extension}`);
+  const variantSpecs = [
+    [
+      "label-readable.jpg",
+      ["-resize", "2200x2200>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.3"]
+    ],
+    [
+      "dark-glare.jpg",
+      ["-resize", "2200x2200>", "-colorspace", "Gray", "-brightness-contrast", "22x32", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]
+    ]
+  ];
+
+  try {
+    fs.writeFileSync(inputPath, image.buffer);
+    for (const spec of variantSpecs) {
+      const variantPath = path.join(tempDir, spec[0]);
+      if (!(await makeImageVariant(inputPath, variantPath, spec[1]))) continue;
+
+      const variant = fs.readFileSync(variantPath);
+      if (variant.length > 0) {
+        parts.push({
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: variant.toString("base64")
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.warn("Enhanced Gemini label images unavailable:", error.message);
+  } finally {
+    removeDirSafe(tempDir);
+  }
+
+  return parts;
 }
 
 function normalizeVisionExtraction(parsed, rawText, knownModel = "") {
@@ -920,6 +970,7 @@ function normalizeModelNumber(value) {
   normalized = normalized
     .replace(/^BW-/, "SW-")
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
+    .replace(/^SW-(\d{3})C(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
     .replace(/^SW-(\d{3})G-0?4-THE?A?G?E?$/i, "SW-$1G-64-TH5")
     .replace(/^SW-(\d{3})G-64-THE?A?G?E?$/i, "SW-$1G-64-TH5")
