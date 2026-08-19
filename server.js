@@ -409,12 +409,14 @@ function parseInventoryText(text, knownModel = "") {
     .trim();
 
   const lines = getOcrLines(normalized);
+  const anchoredModel = findModelValue(lines);
   const scannedModelFromText = findModelFromText(normalized);
   const scannedModelNumber = findValueFromLine(lines, /\bmodel\b/i);
   const scannedModelBelow = findValueBelowLabel(lines, /\bmodel\b/i, isLikelyModelToken);
   const scannedModelNearby = findValueNearLabel(lines, /\bmodel\b/i, isLikelyModelToken);
-  const modelNumber = scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
-  const switchSerialFromText = findSwitchSerialFromText(normalized);
+  const modelNumber = anchoredModel || scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby || knownModel;
+  const resolvedModel = normalizeModelNumber(modelNumber);
+  const switchSerialFromText = findSwitchSerialValue(lines, resolvedModel);
   const switchSerialNumber = findValueFromLine(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const switchSerialNearby = findValueNearLabel(lines, /\bswitch\s*(?:s\s*\/?\s*n|sn|sin|serial(?:\s+number|\s+no)?)\b/i);
   const genericSerialNumber = findValueFromLine(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
@@ -432,16 +434,16 @@ function parseInventoryText(text, knownModel = "") {
     .sort((a, b) => b.length - a.length)[0] || "";
   const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
-  const resolvedModel = normalizeModelNumber(modelNumber || fallbackModel);
-  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, resolvedModel) ||
+  const finalModel = resolvedModel || normalizeModelNumber(fallbackModel);
+  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, finalModel) ||
     cleanInventoryValue(serialNumber || fallbackSerial);
-  const foundBoth = Boolean(resolvedModel && resolvedSerial);
-  const foundLabeledModel = Boolean(scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
+  const foundBoth = Boolean(finalModel && resolvedSerial);
+  const foundLabeledModel = Boolean(anchoredModel || scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
   const foundLabeledSerial = Boolean(switchSerialFromText || switchSerialNumber || switchSerialNearby);
   const usedLabels = Boolean(foundLabeledModel || foundLabeledSerial || genericSerialNumber || genericSerialNearby);
 
   return {
-    modelNumber: resolvedModel,
+    modelNumber: finalModel,
     serialNumber: resolvedSerial,
     confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels),
     notes: foundBoth
@@ -472,15 +474,51 @@ function findModelFromText(text) {
   return isLikelyModelToken(value) ? value : "";
 }
 
-function findSwitchSerialFromText(text) {
+function findModelValue(lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/\bmodel\b/i.test(line)) continue;
+
+    const sameLine = bestModelToken(line.replace(/^.*?\bmodel\b\s*[:;.-]?\s*/i, ""));
+    if (sameLine) return sameLine;
+
+    for (let offset = 1; offset <= 5; offset += 1) {
+      const nextLine = lines[index + offset] || "";
+      if (/\b(?:serial|switch|product|quantity|gross|weight|version|remark|power|fan|can)\b/i.test(nextLine)) {
+        break;
+      }
+
+      const value = bestModelToken(nextLine);
+      if (value) return value;
+    }
+  }
+
+  return "";
+}
+
+function bestModelToken(text) {
+  const rawText = String(text || "");
+  const compactToken = normalizeModelNumber(rawText);
+  const tokens = rawText
+    .split(/[^A-Z0-9._/-]+/i)
+    .map((value) => normalizeModelNumber(value))
+    .filter(Boolean);
+
+  if (compactToken) tokens.push(compactToken);
+
+  return tokens
+    .filter((value) => isLikelyModelToken(value))
+    .sort((a, b) => b.length - a.length)[0] || "";
+}
+
+function findSwitchSerialValue(lines, modelNumber) {
   const matches = [];
-  const lines = getOcrLines(text);
 
   for (const line of lines) {
     const match = line.match(/\bswitch[ \t]*[s8][ \t]*\/?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
     if (!match) continue;
 
-    const value = pickSwitchSerialValue(match[1]);
+    const value = pickSwitchSerialValue(match[1], modelNumber);
     if (value && !isLikelyModelOrProduct(value)) {
       matches.push(value);
     }
@@ -489,7 +527,7 @@ function findSwitchSerialFromText(text) {
   return matches.sort((a, b) => scoreSerialToken(b) - scoreSerialToken(a))[0] || "";
 }
 
-function pickSwitchSerialValue(text) {
+function pickSwitchSerialValue(text, modelNumber = "") {
   const tokens = String(text || "")
     .split(/[^A-Z0-9._/-]+/i)
     .map((value) => cleanInventoryValue(value))
@@ -499,17 +537,17 @@ function pickSwitchSerialValue(text) {
     const token = tokens[index];
     if (/^(?:MADE|MADC|WMADC|IN|MALAYSIA|PRODUCT|QUANTITY|GROSS|WEIGHT|VERSION|REMARK)$/i.test(token)) break;
 
-    const directSerial = normalizeSerialNumber(token);
+    const directSerial = normalizeSerialNumber(token, modelNumber);
     if (directSerial) return directSerial;
 
     const nextToken = tokens[index + 1] || "";
     if (/^GT[A-Z0-9]{2,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
-      const joinedSerial = normalizeSerialNumber(token + nextToken);
+      const joinedSerial = normalizeSerialNumber(token + nextToken, modelNumber);
       if (joinedSerial) return joinedSerial;
     }
   }
 
-  return normalizeSerialNumber(bestInventoryToken(text));
+  return normalizeSerialNumber(bestInventoryToken(text), modelNumber);
 }
 
 function findValueFromLine(lines, labelPattern) {
@@ -641,6 +679,7 @@ function normalizeModelNumber(value) {
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
     .replace(/^M2-W8(940-)/, "M2-W6$1")
+    .replace(/^M2-W6(940-)64$/, "M2-W6$164OC")
     .replace(/^M2-W6(940-)640C(E?)$/, "M2-W6$164OC")
     .replace(/^M2-W6(940-)6400$/, "M2-W6$164OC");
 
