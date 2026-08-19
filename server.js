@@ -336,12 +336,12 @@ async function extractTextFromLabelImages(imagePath, tempDir, options = {}) {
       ];
   const results = [];
 
-  const originalRead = await runOcrWave(imagePaths, ["6"], options.knownModel, results, 10000);
-  if (originalRead) return originalRead;
-
   await addImageVariants(imagePath, tempDir, fastVariantSpecs, imagePaths);
-  const fastRead = await runOcrWave(imagePaths.slice(1), ["6"], options.knownModel, results, 12000);
+  const fastRead = await runOcrWave(imagePaths.slice(0, 2), ["6"], options.knownModel, results, 12000);
   if (fastRead) return fastRead;
+
+  const thirdFastRead = await runOcrWave(imagePaths.slice(2, 4), ["6"], options.knownModel, results, 12000);
+  if (thirdFastRead) return thirdFastRead;
 
   const fallbackPaths = [];
   await addImageVariants(imagePath, tempDir, fallbackVariantSpecs, fallbackPaths);
@@ -375,7 +375,7 @@ async function runOcrWave(imagePaths, modes, knownModel, results, timeout) {
 
       const combined = uniqueLines(results.join("\n")).join("\n").trim();
       const parsed = parseInventoryText(combined, knownModel);
-      if (hasCompleteConfidentRead(parsed)) {
+      if (hasCompleteConfidentRead(parsed, results)) {
         return combined;
       }
     }
@@ -416,16 +416,50 @@ function uniqueLines(text) {
   return Array.from(new Set(String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)));
 }
 
-function hasCompleteConfidentRead(parsed) {
+function getInventoryTokens(text) {
+  return String(text || "")
+    .split(/[^A-Z0-9._/-]+/i)
+    .map((value) => cleanInventoryValue(value))
+    .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 5);
+}
+
+function hasCompleteConfidentRead(parsed, results = []) {
   return Boolean(
     parsed &&
     parsed.modelNumber &&
     parsed.serialNumber &&
-    parsed.confidence >= 0.8
+    parsed.confidence >= 0.8 &&
+    hasRepeatedReadAgreement(parsed, results)
   );
 }
 
-function parseInventoryText(text, knownModel = "") {
+function hasRepeatedReadAgreement(parsed, results) {
+  let matchingModelReads = 0;
+  let matchingSerialReads = 0;
+
+  for (const text of results) {
+    if (textHasModelEvidence(text, parsed.modelNumber)) matchingModelReads += 1;
+    if (textHasSerialEvidence(text, parsed.serialNumber, parsed.modelNumber)) matchingSerialReads += 1;
+  }
+
+  return matchingModelReads >= 2 && matchingSerialReads >= 2;
+}
+
+function textHasModelEvidence(text, modelNumber) {
+  if (!modelNumber) return false;
+  return getInventoryTokens(text)
+    .map((value) => normalizeModelNumber(value))
+    .some((value) => value === modelNumber);
+}
+
+function textHasSerialEvidence(text, serialNumber, modelNumber) {
+  if (!serialNumber) return false;
+  return getInventoryTokens(text)
+    .map((value) => normalizeSerialNumber(value, modelNumber))
+    .some((value) => value === serialNumber);
+}
+
+function parseInventoryText(text, knownModel = "", options = {}) {
   const normalized = String(text || "")
     .replace(/[|]/g, "I")
     .replace(/[“”]/g, '"')
@@ -448,10 +482,7 @@ function parseInventoryText(text, knownModel = "") {
   const genericSerialNearby = findValueNearLabel(lines, /\bs\s*\/?\s*n\b|\bsn\b|\bserial(?:\s+number|\s+no)?\b/i);
   const serialNumber = switchSerialFromText || switchSerialNumber || switchSerialNearby || genericSerialNumber || genericSerialNearby || findBestSerialCandidate(lines);
 
-  const candidates = normalized
-    .split(/[^A-Z0-9._/-]+/i)
-    .map((value) => cleanInventoryValue(value))
-    .filter((value) => /[A-Z]/i.test(value) && /\d/.test(value) && value.length >= 5);
+  const candidates = options.skipFallbackCandidates ? [] : getInventoryTokens(normalized);
 
   const fallbackSerial = candidates
     .filter((candidate) => !isLikelyModelOrProduct(candidate))
