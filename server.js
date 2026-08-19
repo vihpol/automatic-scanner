@@ -243,7 +243,7 @@ async function extractScanWithOpenAI(imageDataUrl, options = {}) {
 }
 
 async function extractScanWithGemini(imageDataUrl, options = {}) {
-  const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   const image = decodeImageDataUrl(imageDataUrl);
   const prompt = buildVisionExtractionPrompt(options.knownModel || "");
   const imageParts = await buildGeminiImageParts(image);
@@ -257,7 +257,8 @@ async function extractScanWithGemini(imageDataUrl, options = {}) {
       body: JSON.stringify({
         generationConfig: {
           temperature: 0,
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          maxOutputTokens: 320
         },
         contents: [
           {
@@ -279,15 +280,14 @@ async function extractScanWithGemini(imageDataUrl, options = {}) {
 
   const data = JSON.parse(response.body);
   const outputText = extractGeminiText(data);
-  const parsed = parseJsonObject(outputText);
+  const parsed = parseVisionJsonOrText(outputText, options.knownModel || "");
   return normalizeVisionExtraction(parsed, outputText, options.knownModel || "");
 }
 
 function buildVisionExtractionPrompt(knownModel = "") {
   return [
-    "You are reading a Micas/Arista switch package label for inventory.",
+    "Read a Micas/Arista switch package label for inventory.",
     "Return only JSON with keys: modelNumber, serialNumber, serialCandidates, confidence, notes.",
-    "The request may include the original label image plus enhanced copies for glare, darkness, blur, or plastic wrap. Compare all images and use the clearest view.",
     "Read modelNumber from the value directly under or after the label 'Model:'. The model is usually on the next line below Model, not the Product ID line.",
     "Read serialNumber only from the value directly after 'SWITCH S/N:' or visually equivalent OCR text. The switch serial can be any uppercase letter/digit code and does not have to start with GT.",
     "Ignore Product ID, FAN, POWER, CAN, ONIE, BIOS, Version, Remark, Quantity, Gross Weight, and all barcode labels not tied to SWITCH S/N.",
@@ -300,17 +300,15 @@ function buildVisionExtractionPrompt(knownModel = "") {
 }
 
 async function buildGeminiImageParts(image) {
-  const parts = [
-    {
-      inlineData: {
-        mimeType: image.mimeType,
-        data: image.buffer.toString("base64")
-      }
+  const originalPart = {
+    inlineData: {
+      mimeType: image.mimeType,
+      data: image.buffer.toString("base64")
     }
-  ];
+  };
 
   if (/^(false|0|off)$/i.test(String(process.env.GEMINI_INCLUDE_ENHANCED || ""))) {
-    return parts;
+    return [originalPart];
   }
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "automatic-scanner-gemini-"));
@@ -318,11 +316,7 @@ async function buildGeminiImageParts(image) {
   const variantSpecs = [
     [
       "label-readable.jpg",
-      ["-resize", "2200x2200>", "-colorspace", "Gray", "-auto-level", "-contrast-stretch", "1%x1%", "-sharpen", "0x1.3"]
-    ],
-    [
-      "dark-glare.jpg",
-      ["-resize", "2200x2200>", "-colorspace", "Gray", "-brightness-contrast", "22x32", "-contrast-stretch", "4%x12%", "-sigmoidal-contrast", "6,45%", "-sharpen", "0x1.4"]
+      ["-resize", "1700x1700>", "-colorspace", "Gray", "-brightness-contrast", "12x18", "-contrast-stretch", "2%x8%", "-sharpen", "0x1.1", "-quality", "82"]
     ]
   ];
 
@@ -334,12 +328,12 @@ async function buildGeminiImageParts(image) {
 
       const variant = fs.readFileSync(variantPath);
       if (variant.length > 0) {
-        parts.push({
+        return [{
           inlineData: {
             mimeType: "image/jpeg",
             data: variant.toString("base64")
           }
-        });
+        }];
       }
     }
   } catch (error) {
@@ -348,7 +342,7 @@ async function buildGeminiImageParts(image) {
     removeDirSafe(tempDir);
   }
 
-  return parts;
+  return [originalPart];
 }
 
 function normalizeVisionExtraction(parsed, rawText, knownModel = "") {
@@ -366,6 +360,21 @@ function normalizeVisionExtraction(parsed, rawText, knownModel = "") {
     notes: String(parsed.notes || "").trim(),
     rawText
   };
+}
+
+function parseVisionJsonOrText(text, knownModel = "") {
+  try {
+    return parseJsonObject(text);
+  } catch (error) {
+    const parsed = parseInventoryText(text, knownModel);
+    return {
+      modelNumber: parsed.modelNumber,
+      serialNumber: parsed.serialNumber,
+      serialCandidates: parsed.serialCandidates || [],
+      confidence: parsed.confidence,
+      notes: parsed.notes || "Read from vision text fallback."
+    };
+  }
 }
 
 function extractGeminiText(data) {
@@ -1077,10 +1086,55 @@ function parseJsonObject(text) {
   try {
     return JSON.parse(trimmed);
   } catch (error) {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) throw error;
-    return JSON.parse(match[0]);
+    const objectText = extractFirstJsonObject(trimmed);
+    if (!objectText) throw error;
+    return JSON.parse(objectText);
   }
+}
+
+function extractFirstJsonObject(text) {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (start === -1) {
+      if (char === "{") {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+
+    if (depth === 0) {
+      return text.slice(start, index + 1);
+    }
+  }
+
+  return "";
 }
 
 function normalizeScan(body) {
