@@ -748,8 +748,8 @@ function normalizeModelNumber(value) {
 
 function normalizeSerialNumber(value, modelNumber = "") {
   const cleaned = cleanInventoryValue(value);
-  const match = cleaned.match(/(?:^|[^A-Z0-9])?(GT[A-Z0-9]{11})/i) ||
-    cleaned.match(/(?:^|[^A-Z0-9])?([8B]T[A-Z0-9]{11})/i) ||
+  const match = cleaned.match(/(?:^|[^A-Z0-9])?(GT[A-Z0-9]{11,12})/i) ||
+    cleaned.match(/(?:^|[^A-Z0-9])?([8B]T[A-Z0-9]{11,12})/i) ||
     cleaned.match(/(?:^|[^A-Z0-9])?(375[A-Z0-9]{10})/i);
 
   if (!match) return "";
@@ -770,7 +770,7 @@ function normalizeSerialNumber(value, modelNumber = "") {
     }
   }
 
-  return /^GT[A-Z0-9]{11}$/i.test(serial) ? serial : "";
+  return /^GT[A-Z0-9]{11,12}$/i.test(serial) ? serial : "";
 }
 
 function cleanInventoryValue(value) {
@@ -870,7 +870,7 @@ function validateScan(scan) {
 }
 
 function isValidSerialNumber(value) {
-  return /^GT[A-Z0-9]{11}$/i.test(normalizeSerialNumber(value));
+  return /^GT[A-Z0-9]{11,12}$/i.test(normalizeSerialNumber(value));
 }
 
 async function appendScanToSheet(scan) {
