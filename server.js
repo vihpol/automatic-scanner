@@ -147,26 +147,51 @@ function readJson(req, maxBytes) {
 }
 
 async function extractScanFromImage(imageDataUrl, options = {}) {
-  const apiKey = getUsableOpenAIKey();
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const knownModel = cleanInventoryValue(options.knownModel || "");
 
   if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(String(imageDataUrl || ""))) {
     throw new Error("A PNG, JPEG, or WebP image data URL is required.");
   }
 
-  if (!apiKey) {
-    return extractScanWithTesseract(imageDataUrl, {
-      knownModel,
-      serialOnly: Boolean(options.serialOnly)
-    });
+  const geminiKey = getUsableGeminiKey();
+  if (geminiKey) {
+    try {
+      return await extractScanWithGemini(imageDataUrl, {
+        apiKey: geminiKey,
+        knownModel
+      });
+    } catch (error) {
+      console.warn("Gemini label reader unavailable; trying next reader:", error.message);
+    }
   }
+
+  const openAiKey = getUsableOpenAIKey();
+  if (openAiKey) {
+    try {
+      return await extractScanWithOpenAI(imageDataUrl, {
+        apiKey: openAiKey,
+        knownModel
+      });
+    } catch (error) {
+      console.warn("OpenAI label reader unavailable; using local reader:", error.message);
+    }
+  }
+
+  return extractScanWithTesseract(imageDataUrl, {
+    knownModel,
+    serialOnly: Boolean(options.serialOnly)
+  });
+}
+
+async function extractScanWithOpenAI(imageDataUrl, options = {}) {
+  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const knownModel = options.knownModel || "";
 
   try {
     const response = await requestJson("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${options.apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -213,16 +238,114 @@ async function extractScanFromImage(imageDataUrl, options = {}) {
       rawText: outputText
     };
   } catch (error) {
-    console.warn("Photo analysis service unavailable; using local reader:", error.message);
-    return extractScanWithTesseract(imageDataUrl, {
-      knownModel,
-      serialOnly: Boolean(options.serialOnly)
-    });
+    throw error;
   }
+}
+
+async function extractScanWithGemini(imageDataUrl, options = {}) {
+  const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+  const image = decodeImageDataUrl(imageDataUrl);
+  const prompt = buildVisionExtractionPrompt(options.knownModel || "");
+  const response = await requestJson(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(options.apiKey)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json"
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: image.mimeType,
+                  data: image.buffer.toString("base64")
+                }
+              }
+            ]
+          }
+        ]
+      }),
+      timeout: 60000
+    }
+  );
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(response.body);
+  }
+
+  const data = JSON.parse(response.body);
+  const outputText = extractGeminiText(data);
+  const parsed = parseJsonObject(outputText);
+  return normalizeVisionExtraction(parsed, outputText, options.knownModel || "");
+}
+
+function buildVisionExtractionPrompt(knownModel = "") {
+  return [
+    "You are reading a Micas/Arista switch package label for inventory.",
+    "Return only JSON with keys: modelNumber, serialNumber, serialCandidates, confidence, notes.",
+    "Read modelNumber from the value directly under or after the label 'Model:'.",
+    "Read serialNumber only from the value directly after 'SWITCH S/N:' or visually equivalent OCR text.",
+    "Ignore Product ID, FAN, POWER, CAN, ONIE, BIOS, Version, Remark, Quantity, Gross Weight, and all barcode labels not tied to SWITCH S/N.",
+    "If the switch serial is unclear, set serialNumber to an empty string and put likely switch S/N candidates in serialCandidates.",
+    "Do not invent missing characters. Prefer empty fields over guessing.",
+    knownModel ? `Previously saved model: ${knownModel}. If this image shows a different Model value, return the model shown in the image.` : "",
+    "confidence must be a number from 0 to 1."
+  ].filter(Boolean).join(" ");
+}
+
+function normalizeVisionExtraction(parsed, rawText, knownModel = "") {
+  const modelNumber = normalizeModelNumber(parsed.modelNumber || "") || knownModel || "";
+  const serialNumber = normalizeSerialNumber(parsed.serialNumber || "", modelNumber);
+  const serialCandidates = Array.isArray(parsed.serialCandidates)
+    ? parsed.serialCandidates.map((value) => normalizeSerialNumber(value, modelNumber)).filter(Boolean)
+    : [];
+
+  return {
+    modelNumber,
+    serialNumber,
+    serialCandidates: Array.from(new Set(serialCandidates)),
+    confidence: Number(parsed.confidence || 0),
+    notes: String(parsed.notes || "").trim(),
+    rawText
+  };
+}
+
+function extractGeminiText(data) {
+  const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  const parts = [];
+
+  for (const candidate of candidates) {
+    const contentParts = candidate && candidate.content && Array.isArray(candidate.content.parts)
+      ? candidate.content.parts
+      : [];
+    for (const part of contentParts) {
+      if (part.text) parts.push(part.text);
+    }
+  }
+
+  return parts.join("\n").trim();
 }
 
 function getUsableOpenAIKey() {
   const key = String(process.env.OPENAI_API_KEY || "").trim();
+
+  if (!key || /^optional_/i.test(key) || /your[_-]?api[_-]?key/i.test(key)) {
+    return "";
+  }
+
+  return key;
+}
+
+function getUsableGeminiKey() {
+  const key = String(process.env.GEMINI_API_KEY || "").trim();
 
   if (!key || /^optional_/i.test(key) || /your[_-]?api[_-]?key/i.test(key)) {
     return "";
@@ -291,6 +414,7 @@ function decodeImageDataUrl(imageDataUrl) {
 
   return {
     extension,
+    mimeType: `image/${extension === "jpg" ? "jpeg" : extension}`,
     buffer: Buffer.from(match[2], "base64")
   };
 }
@@ -794,6 +918,7 @@ function normalizeModelNumber(value) {
   let normalized = cleanInventoryValue(value).replace(/[._]+/g, "-");
 
   normalized = normalized
+    .replace(/^BW-/, "SW-")
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
     .replace(/^SW-(\d{3})G-0?4-THE?A?G?E?$/i, "SW-$1G-64-TH5")
@@ -1215,7 +1340,7 @@ function requestJson(url, options, redirectCount, followRedirects) {
     );
 
     request.on("error", reject);
-    request.setTimeout(15000, () => {
+    request.setTimeout(options.timeout || 15000, () => {
       request.destroy(new Error("Request timed out"));
     });
     request.write(body);
