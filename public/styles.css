@@ -185,6 +185,7 @@ h2 {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 160ms ease;
 }
 
 .photo-frame img.visible,
@@ -219,6 +220,32 @@ h2 {
   display: grid;
   gap: 10px;
   margin-top: 12px;
+}
+
+.crop-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.crop-controls {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--field);
+  padding: 10px;
+}
+
+.crop-controls label {
+  gap: 5px;
+  font-size: 0.72rem;
+}
+
+.crop-controls input {
+  min-height: 24px;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .camera-tools {

@@ -1,5 +1,9 @@
 const state = {
   imageDataUrl: "",
+  labelImageDataUrl: "",
+  cropZoom: 2.4,
+  cropX: 50,
+  cropY: 48,
   savedCount: 0,
   scanning: false,
   saving: false
@@ -28,11 +32,18 @@ const rapidMode = document.querySelector("#rapidMode");
 const autoSave = document.querySelector("#autoSave");
 const sameModel = document.querySelector("#sameModel");
 const LAST_MODEL_KEY = "automaticScanner.lastModelNumber";
+let cropTools;
+let cropZoomInput;
+let cropXInput;
+let cropYInput;
+let readLabelCrop;
 
 initialize();
 
 function initialize() {
   supportStatus.textContent = "Ready";
+  configurePhonePhotoInput();
+  createCropTools();
   updateCameraAvailability();
   openCamera.addEventListener("click", startCamera);
   capturePhoto.addEventListener("click", captureFromCamera);
@@ -52,6 +63,37 @@ function initialize() {
   updateValidation();
 }
 
+function configurePhonePhotoInput() {
+  labelPhoto.setAttribute("accept", "image/*");
+  labelPhoto.setAttribute("capture", "environment");
+}
+
+function createCropTools() {
+  cropTools = document.createElement("div");
+  cropTools.className = "crop-tools hidden";
+  cropTools.innerHTML = [
+    '<div class="crop-controls">',
+    '<label>Label zoom<input id="cropZoomInput" type="range" min="1" max="5" step="0.1" value="2.4"></label>',
+    '<label>Left / right<input id="cropXInput" type="range" min="0" max="100" step="1" value="50"></label>',
+    '<label>Up / down<input id="cropYInput" type="range" min="0" max="100" step="1" value="48"></label>',
+    '</div>',
+    '<button class="primary-button" id="readLabelCrop" type="button">Read Label Area</button>'
+  ].join("");
+
+  const target = photoPreview.parentElement || photoPreview;
+  target.insertAdjacentElement("afterend", cropTools);
+
+  cropZoomInput = cropTools.querySelector("#cropZoomInput");
+  cropXInput = cropTools.querySelector("#cropXInput");
+  cropYInput = cropTools.querySelector("#cropYInput");
+  readLabelCrop = cropTools.querySelector("#readLabelCrop");
+
+  cropZoomInput.addEventListener("input", updateCropPreview);
+  cropXInput.addEventListener("input", updateCropPreview);
+  cropYInput.addEventListener("input", updateCropPreview);
+  readLabelCrop.addEventListener("click", extractFromPhoto);
+}
+
 function updateCameraAvailability() {
   if (canUseLiveCamera()) return;
 
@@ -69,7 +111,7 @@ function canUseLiveCamera() {
 async function startCamera() {
   if (!canUseLiveCamera()) {
     openCamera.classList.add("hidden");
-    setFormStatus("Use Phone Camera.", false);
+    setFormStatus("Use Phone Camera. Live camera needs HTTPS on most phones.", false);
     labelPhoto.click();
     return;
   }
@@ -77,14 +119,7 @@ async function startCamera() {
   try {
     stopCamera();
     setFormStatus("Opening camera.", true);
-    state.cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 2560 },
-        height: { ideal: 1440 }
-      },
-      audio: false
-    });
+    state.cameraStream = await openBestCameraStream();
     cameraPreview.srcObject = state.cameraStream;
     cameraPreview.classList.add("visible");
     photoPreview.classList.remove("visible");
@@ -97,9 +132,52 @@ async function startCamera() {
   } catch (error) {
     console.error(error);
     stopCamera();
-    setFormStatus("Use Phone Camera.", false);
+    setFormStatus("Camera blocked. Use Phone Camera.", false);
     labelPhoto.click();
   }
+}
+
+async function openBestCameraStream() {
+  const attempts = [
+    {
+      video: {
+        facingMode: { exact: "environment" },
+        width: { ideal: 2560 },
+        height: { ideal: 1440 }
+      },
+      audio: false
+    },
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    },
+    {
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    },
+    {
+      video: true,
+      audio: false
+    }
+  ];
+  let lastError;
+
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Camera unavailable");
 }
 
 function stopCamera() {
@@ -186,6 +264,7 @@ async function captureFromCamera() {
       cameraPreview.videoWidth,
       cameraPreview.videoHeight
     );
+    state.labelImageDataUrl = "";
     photoPreview.src = state.imageDataUrl;
     photoPreview.classList.add("visible");
     cameraPreview.classList.remove("visible");
@@ -194,7 +273,9 @@ async function captureFromCamera() {
     extractPhoto.classList.add("hidden");
     stopCamera();
     if (await applyFastBarcodeRead()) return;
-    await extractFromPhoto();
+    showCropTools();
+    setProgress(32);
+    setFormStatus("Frame the white label, then read label area.", true);
   } catch (error) {
     console.error(error);
     setFormStatus("Unable to capture photo.", false);
@@ -217,13 +298,16 @@ async function handlePhotoSelection(event) {
     setProgress(18);
     setFormStatus("Preparing photo.", true);
     state.imageDataUrl = await readPreparedImage(file);
+    state.labelImageDataUrl = "";
     photoPreview.src = state.imageDataUrl;
     photoPreview.classList.add("visible");
     photoPlaceholder.classList.add("hidden");
     extractPhoto.disabled = false;
     extractPhoto.classList.add("hidden");
     if (await applyFastBarcodeRead()) return;
-    await extractFromPhoto();
+    showCropTools();
+    setProgress(32);
+    setFormStatus("Frame the white label, then read label area.", true);
   } catch (error) {
     console.error(error);
     setFormStatus("Unable to read the photo.", false);
@@ -245,13 +329,14 @@ async function extractFromPhoto() {
   setFormStatus("Reading label.", true);
 
   try {
+    const imageDataUrl = await getLabelImageDataUrl();
     const response = await fetch("/api/extract", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        imageDataUrl: state.imageDataUrl,
+        imageDataUrl,
         knownModel: shouldKeepModel() ? modelNumber.value.trim() : "",
         serialOnly: false
       })
@@ -412,9 +497,13 @@ async function applyFastBarcodeRead() {
 
 function clearPhoto() {
   state.imageDataUrl = "";
+  state.labelImageDataUrl = "";
   labelPhoto.value = "";
   photoPreview.removeAttribute("src");
+  photoPreview.style.transform = "";
+  photoPreview.style.transformOrigin = "";
   photoPreview.classList.remove("visible");
+  hideCropTools();
   if (!state.cameraStream) {
     cameraPreview.classList.remove("visible");
   }
@@ -424,6 +513,80 @@ function clearPhoto() {
   if (!rapidMode.checked || state.savedCount === 0) {
     supportStatus.textContent = "Ready";
   }
+}
+
+function showCropTools() {
+  if (!cropTools) return;
+  cropTools.classList.remove("hidden");
+  updateCropPreview();
+}
+
+function hideCropTools() {
+  if (cropTools) cropTools.classList.add("hidden");
+}
+
+function updateCropPreview() {
+  state.cropZoom = Number(cropZoomInput.value || 2.4);
+  state.cropX = Number(cropXInput.value || 50);
+  state.cropY = Number(cropYInput.value || 48);
+  state.labelImageDataUrl = "";
+
+  if (!state.imageDataUrl) return;
+  photoPreview.style.transformOrigin = `${state.cropX}% ${state.cropY}%`;
+  photoPreview.style.transform = `scale(${state.cropZoom})`;
+}
+
+async function getLabelImageDataUrl() {
+  if (state.labelImageDataUrl) return state.labelImageDataUrl;
+  state.labelImageDataUrl = await cropImageDataUrl(state.imageDataUrl, {
+    zoom: state.cropZoom,
+    x: state.cropX,
+    y: state.cropY
+  });
+  return state.labelImageDataUrl;
+}
+
+function cropImageDataUrl(imageDataUrl, crop) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const zoom = Math.max(1, Number(crop.zoom || 1));
+      const sourceWidth = Math.max(1, Math.round(image.width / zoom));
+      const sourceHeight = Math.max(1, Math.round(image.height / zoom));
+      const centerX = image.width * (Number(crop.x || 50) / 100);
+      const centerY = image.height * (Number(crop.y || 50) / 100);
+      const sourceX = clamp(centerX - sourceWidth / 2, 0, image.width - sourceWidth);
+      const sourceY = clamp(centerY - sourceHeight / 2, 0, image.height - sourceHeight);
+      const outputScale = Math.min(2.4, 2600 / Math.max(sourceWidth, sourceHeight));
+
+      captureCanvas.width = Math.max(900, Math.round(sourceWidth * outputScale));
+      captureCanvas.height = Math.max(520, Math.round(sourceHeight * outputScale));
+
+      const context = captureCanvas.getContext("2d");
+      context.filter = "brightness(1.18) contrast(1.24) saturate(0.75)";
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(
+        image,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        captureCanvas.width,
+        captureCanvas.height
+      );
+
+      resolve(captureCanvas.toDataURL("image/jpeg", 0.94));
+    };
+    image.onerror = reject;
+    image.src = imageDataUrl;
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function setProgress(percent) {
