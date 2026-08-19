@@ -31,7 +31,16 @@ const serialNumber = document.querySelector("#serialNumber");
 const rapidMode = document.querySelector("#rapidMode");
 const autoSave = document.querySelector("#autoSave");
 const sameModel = document.querySelector("#sameModel");
+const toggleSheetSetup = document.querySelector("#toggleSheetSetup");
+const sheetSetup = document.querySelector("#sheetSetup");
+const appsScriptUrl = document.querySelector("#appsScriptUrl");
+const sheetTab = document.querySelector("#sheetTab");
+const saveSheetSetup = document.querySelector("#saveSheetSetup");
+const clearSheetSetup = document.querySelector("#clearSheetSetup");
+const sheetSummary = document.querySelector("#sheetSummary");
+const sheetStatus = document.querySelector("#sheetStatus");
 const LAST_MODEL_KEY = "automaticScanner.lastModelNumber";
+const SHEET_SETUP_KEY = "automaticScanner.sheetSetup";
 let cropTools;
 let cropZoomInput;
 let cropXInput;
@@ -58,8 +67,12 @@ function initialize() {
   rapidMode.addEventListener("change", handleRapidModeChange);
   autoSave.addEventListener("change", updateValidation);
   sameModel.addEventListener("change", handleSameModelChange);
+  toggleSheetSetup.addEventListener("click", toggleSheetPanel);
+  saveSheetSetup.addEventListener("click", saveSheetSettings);
+  clearSheetSetup.addEventListener("click", clearSheetSettings);
   handleRapidModeChange();
   restoreLastModel();
+  restoreSheetSettings();
   updateValidation();
 }
 
@@ -372,6 +385,9 @@ async function saveScan() {
     notes: "",
     source: "phone-photo"
   };
+  const sheetSettings = getSheetSettings();
+  if (sheetSettings.appsScriptUrl) payload.appsScriptUrl = sheetSettings.appsScriptUrl;
+  if (sheetSettings.sheetTab) payload.sheetTab = sheetSettings.sheetTab;
 
   const errors = getValidationErrors(payload);
   if (errors.length > 0 || state.saving) {
@@ -414,6 +430,74 @@ async function saveScan() {
   } finally {
     state.saving = false;
     updateValidation();
+  }
+}
+
+function toggleSheetPanel() {
+  sheetSetup.classList.toggle("hidden");
+}
+
+function restoreSheetSettings() {
+  const settings = getSheetSettings();
+  appsScriptUrl.value = settings.appsScriptUrl || "";
+  sheetTab.value = settings.sheetTab || "Scans";
+  updateSheetSummary(settings);
+}
+
+function getSheetSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(SHEET_SETUP_KEY) || "{}") || {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveSheetSettings() {
+  const url = appsScriptUrl.value.trim();
+  const tab = sheetTab.value.trim() || "Scans";
+
+  if (url && !isAppsScriptUrl(url)) {
+    setSheetStatus("Paste a Google Apps Script web app URL ending in /exec.", false);
+    return;
+  }
+
+  const settings = {
+    appsScriptUrl: url,
+    sheetTab: tab
+  };
+  localStorage.setItem(SHEET_SETUP_KEY, JSON.stringify(settings));
+  updateSheetSummary(settings);
+  setSheetStatus(url ? "Sheet saved for this phone." : "Using default sheet.", true);
+}
+
+function clearSheetSettings() {
+  localStorage.removeItem(SHEET_SETUP_KEY);
+  appsScriptUrl.value = "";
+  sheetTab.value = "Scans";
+  updateSheetSummary({});
+  setSheetStatus("Using default sheet.", true);
+}
+
+function updateSheetSummary(settings) {
+  const tab = settings.sheetTab || "Scans";
+  sheetSummary.textContent = settings.appsScriptUrl
+    ? `Custom sheet saved. Tab: ${tab}.`
+    : "Using default sheet.";
+}
+
+function setSheetStatus(message, ready) {
+  sheetStatus.textContent = message;
+  sheetStatus.classList.toggle("ready", Boolean(ready));
+}
+
+function isAppsScriptUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      url.hostname === "script.google.com" &&
+      /\/macros\/s\/.+\/exec$/i.test(url.pathname);
+  } catch (error) {
+    return false;
   }
 }
 

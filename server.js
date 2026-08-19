@@ -787,6 +787,7 @@ function normalizeScan(body) {
     serialNumber: String(body.serialNumber || "").trim(),
     notes: String(body.notes || "").trim(),
     source: String(body.source || "phone-scanner").trim(),
+    appsScriptUrl: cleanAppsScriptUrl(body.appsScriptUrl || ""),
     sheetId: cleanSheetId(body.sheetId || ""),
     sheetTab: String(body.sheetTab || "").trim()
   };
@@ -810,7 +811,7 @@ function validateScan(scan) {
 }
 
 async function appendScanToSheet(scan) {
-  const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
+  const appsScriptUrl = scan.appsScriptUrl || process.env.GOOGLE_APPS_SCRIPT_URL;
   const appsScriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET || "";
   const sheetId = scan.sheetId || cleanSheetId(process.env.GOOGLE_SHEET_ID || "");
   const tab = scan.sheetTab || process.env.GOOGLE_SHEET_TAB || "Scans";
@@ -872,6 +873,21 @@ function cleanSheetId(value) {
   if (/^(?:your_google_sheet_id|your[_-]?sheet[_-]?id)$/i.test(text)) return "";
   const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return (match ? match[1] : text).trim();
+}
+
+function cleanAppsScriptUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "https:" || url.hostname !== "script.google.com") {
+      return "";
+    }
+    return url.toString();
+  } catch (error) {
+    return "";
+  }
 }
 
 async function appendScanWithAppsScript(url, secret, options) {

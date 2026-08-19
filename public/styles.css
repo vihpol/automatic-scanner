@@ -116,6 +116,39 @@ h2 {
   background: var(--panel);
 }
 
+.sheet-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  padding: 16px;
+}
+
+.sheet-panel-header,
+.sheet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-summary {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.sheet-setup {
+  display: grid;
+  gap: 12px;
+}
+
+.compact-button {
+  min-height: 42px;
+  padding: 0 16px;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;

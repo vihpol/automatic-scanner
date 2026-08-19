@@ -89,6 +89,32 @@
           </form>
         </div>
       </section>
+
+      <section class="sheet-panel" aria-labelledby="sheet-title">
+        <div class="sheet-panel-header">
+          <div>
+            <p class="eyebrow">Output</p>
+            <h2 id="sheet-title">Google Sheet</h2>
+          </div>
+          <button class="tool-button compact-button" id="toggleSheetSetup" type="button">Change</button>
+        </div>
+        <div class="sheet-summary" id="sheetSummary">Using default sheet.</div>
+        <div class="sheet-setup hidden" id="sheetSetup">
+          <label>
+            Apps Script URL
+            <input id="appsScriptUrl" name="appsScriptUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+          </label>
+          <label>
+            Tab name
+            <input id="sheetTab" name="sheetTab" autocomplete="off" placeholder="Scans">
+          </label>
+          <div class="sheet-actions">
+            <button class="primary-button compact-button" id="saveSheetSetup" type="button">Save Sheet</button>
+            <button class="tool-button compact-button" id="clearSheetSetup" type="button">Use Default</button>
+          </div>
+          <div class="form-status" id="sheetStatus" role="status"></div>
+        </div>
+      </section>
     </main>
 
     <script src="/app.js"></script>
