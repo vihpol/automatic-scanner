@@ -1,0 +1,12 @@
+services:
+  scan-station:
+    build: .
+    image: micas-automatic-scan-station
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+    ports:
+      - "3000:3000"

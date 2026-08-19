@@ -267,6 +267,16 @@ async function assertOcrDependency(command) {
   if (!result.ok) {
     throw new Error(`${command} is required on the VM for photo reading.`);
   }
+
+  if (command === "tesseract") {
+    const languages = await execFileQuiet(command, ["--list-langs"], {
+      timeout: 5000,
+      maxBuffer: 128 * 1024
+    });
+    if (!languages.ok || !/\beng\b/i.test(languages.stdout)) {
+      throw new Error("English OCR data is required on the VM for photo reading.");
+    }
+  }
 }
 
 function decodeImageDataUrl(imageDataUrl) {
@@ -423,7 +433,8 @@ function parseInventoryText(text, knownModel = "") {
   const fallbackModel = candidates.find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
 
   const resolvedModel = normalizeModelNumber(modelNumber || fallbackModel);
-  const resolvedSerial = cleanInventoryValue(serialNumber || fallbackSerial);
+  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, resolvedModel) ||
+    cleanInventoryValue(serialNumber || fallbackSerial);
   const foundBoth = Boolean(resolvedModel && resolvedSerial);
   const foundLabeledModel = Boolean(scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
   const foundLabeledSerial = Boolean(switchSerialFromText || switchSerialNumber || switchSerialNearby);
@@ -462,11 +473,20 @@ function findModelFromText(text) {
 }
 
 function findSwitchSerialFromText(text) {
-  const match = String(text || "").match(/\bswitch[ \t]*s[ \t]*\/?[ \t]*n[ \t]*[:;]?[ \t]*([^\r\n]+)/i);
-  if (!match) return "";
+  const matches = [];
+  const lines = getOcrLines(text);
 
-  const value = pickSwitchSerialValue(match[1]);
-  return isLikelyModelOrProduct(value) ? "" : value;
+  for (const line of lines) {
+    const match = line.match(/\bswitch[ \t]*[s8][ \t]*\/?[ \t]*n[ \t]*[:.;]?[ \t]*(.+)$/i);
+    if (!match) continue;
+
+    const value = pickSwitchSerialValue(match[1]);
+    if (value && !isLikelyModelOrProduct(value)) {
+      matches.push(value);
+    }
+  }
+
+  return matches.sort((a, b) => scoreSerialToken(b) - scoreSerialToken(a))[0] || "";
 }
 
 function pickSwitchSerialValue(text) {
@@ -477,17 +497,19 @@ function pickSwitchSerialValue(text) {
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (/^(?:MADE|IN|MALAYSIA|PRODUCT|QUANTITY|GROSS|WEIGHT|VERSION|REMARK)$/i.test(token)) break;
+    if (/^(?:MADE|MADC|WMADC|IN|MALAYSIA|PRODUCT|QUANTITY|GROSS|WEIGHT|VERSION|REMARK)$/i.test(token)) break;
 
-    if (/^GT[A-Z0-9]{8,}$/i.test(token)) return token;
+    const directSerial = normalizeSerialNumber(token);
+    if (directSerial) return directSerial;
 
     const nextToken = tokens[index + 1] || "";
     if (/^GT[A-Z0-9]{2,}$/i.test(token) && /^[A-Z0-9]{6,}$/i.test(nextToken)) {
-      return cleanInventoryValue(token + nextToken);
+      const joinedSerial = normalizeSerialNumber(token + nextToken);
+      if (joinedSerial) return joinedSerial;
     }
   }
 
-  return bestInventoryToken(text);
+  return normalizeSerialNumber(bestInventoryToken(text));
 }
 
 function findValueFromLine(lines, labelPattern) {
@@ -617,9 +639,39 @@ function normalizeModelNumber(value) {
 
   normalized = normalized
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
-    .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2");
+    .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
+    .replace(/^M2-W8(940-)/, "M2-W6$1")
+    .replace(/^M2-W6(940-)640C(E?)$/, "M2-W6$164OC")
+    .replace(/^M2-W6(940-)6400$/, "M2-W6$164OC");
 
   return normalized;
+}
+
+function normalizeSerialNumber(value, modelNumber = "") {
+  const cleaned = cleanInventoryValue(value);
+  const match = cleaned.match(/(?:^|[^A-Z0-9])?(GT[A-Z0-9]{11})/i) ||
+    cleaned.match(/(?:^|[^A-Z0-9])?([8B]T[A-Z0-9]{11})/i) ||
+    cleaned.match(/(?:^|[^A-Z0-9])?(375[A-Z0-9]{10})/i);
+
+  if (!match) return "";
+
+  let serial = cleanInventoryValue(match[1]);
+  serial = serial
+    .replace(/^[8B]T/, "GT")
+    .replace(/^375(?=[A-Z0-9]{10}$)/, "GT5");
+
+  if (/^M2-W6940-64OC$/i.test(modelNumber) && /^GT5G\d{9}$/i.test(serial)) {
+    serial = serial.replace(/^GT5G/i, "GT6G");
+  }
+
+  if (/^M2-W6940-64OC$/i.test(modelNumber)) {
+    const missingGMatch = serial.match(/^GT5(\d{10})$/i);
+    if (missingGMatch) {
+      serial = `GT6G${missingGMatch[1].slice(1)}`;
+    }
+  }
+
+  return /^GT[A-Z0-9]{11}$/i.test(serial) ? serial : "";
 }
 
 function cleanInventoryValue(value) {
