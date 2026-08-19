@@ -486,25 +486,26 @@ function parseInventoryText(text, knownModel = "", options = {}) {
 
   const candidates = options.skipFallbackCandidates ? [] : getInventoryTokens(normalized);
 
-  const fallbackSerial = candidates
-    .filter((candidate) => !isLikelyModelOrProduct(candidate))
-    .slice()
-    .sort((a, b) => b.length - a.length)[0] || "";
+  const fallbackSerial = "";
   const fallbackModel = candidates
     .map((candidate) => normalizeModelNumber(candidate))
-    .find((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate)) || "";
+    .filter((candidate) => candidate !== fallbackSerial && isLikelyModelToken(candidate))
+    .sort((a, b) => scoreModelToken(b) - scoreModelToken(a))[0] || "";
 
   const finalModel = resolvedModel || normalizeModelNumber(fallbackModel);
-  const resolvedSerial = normalizeSerialNumber(serialNumber || fallbackSerial, finalModel);
-  const foundBoth = Boolean(finalModel && resolvedSerial);
   const foundLabeledModel = Boolean(anchoredModel || scannedModelFromText || scannedModelNumber || scannedModelBelow || scannedModelNearby);
   const foundLabeledSerial = Boolean(switchSerialFromText || switchSerialNumber || switchSerialNearby);
   const usedLabels = Boolean(foundLabeledModel || foundLabeledSerial || genericSerialNumber || genericSerialNearby);
+  const resolvedSerial = (foundLabeledSerial || foundLabeledModel)
+    ? normalizeSerialNumber(serialNumber || fallbackSerial, finalModel)
+    : "";
+  const foundBoth = Boolean(finalModel && resolvedSerial);
+  const visibleSerialCandidates = (foundLabeledSerial || foundLabeledModel) ? serialCandidates : [];
 
   return {
     modelNumber: finalModel,
     serialNumber: resolvedSerial,
-    serialCandidates,
+    serialCandidates: visibleSerialCandidates,
     confidence: getReadConfidence(foundBoth, foundLabeledModel, foundLabeledSerial, usedLabels, finalModel, resolvedSerial),
     notes: foundBoth
       ? "Read from photo. Review before saving."
@@ -516,7 +517,7 @@ function findSerialCandidates(lines, modelNumber = "") {
   const candidates = [];
 
   for (const line of lines) {
-    if (/\b(product|model|quantity|weight|version|remark)\b/i.test(line)) continue;
+    if (/\b(product|model|quantity|weight|version|remark|fan|power|can|onie|bios)\b/i.test(line)) continue;
     if (looksLikeSwitchSerialLine(line)) {
       collectSerialCandidates(line, modelNumber).forEach((value) => candidates.push(value));
       continue;
@@ -747,7 +748,7 @@ function findBestSerialCandidate(lines, modelNumber = "") {
   const tokens = [];
 
   for (const line of lines) {
-    if (/\b(product|model|quantity|weight|version|remark)\b/i.test(line)) continue;
+    if (/\b(product|model|quantity|weight|version|remark|fan|power|can|onie|bios)\b/i.test(line)) continue;
 
     collectSerialCandidates(line, modelNumber)
       .filter((value) => !isLikelyModelOrProduct(value))
@@ -776,9 +777,17 @@ function isLikelyModelOrProduct(value) {
 }
 
 function isLikelyModelToken(value) {
-  return (/^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
+  return value.length >= 8 &&
+    (/^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
     /^M\d+[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value)) &&
     !/-(?:ACF|FA|FB|PORT.*)$/i.test(value);
+}
+
+function scoreModelToken(value) {
+  let score = value.length;
+  if (/^SW-\d{3}G-\d{2}-TH5$/i.test(value)) score += 80;
+  if (/^M2-W\d{4}-\d{2}[A-Z0-9]{2}$/i.test(value)) score += 60;
+  return score;
 }
 
 function normalizeModelNumber(value) {
@@ -792,6 +801,7 @@ function normalizeModelNumber(value) {
     .replace(/^SW-(\d{3})G-0?4-TH[58S](?:-ACF)?$/i, "SW-$1G-64-TH5")
     .replace(/^SW-(\d{3})0(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-64-TH$/, "SW-$1G-64-TH5")
+    .replace(/^SW-(\d{3})G-64-THS5$/, "SW-$1G-64-TH5")
     .replace(/^SW-(\d{3})G-64-THS$/, "SW-$1G-64-TH5")
     .replace(/^M2-W[8369](?:340|940)-64[0O]C$/, "M2-W6940-64OC")
     .replace(/^M2-W8(940-)/, "M2-W6$1")
