@@ -467,7 +467,7 @@ function getOcrLines(text) {
 }
 
 function findModelFromText(text) {
-  const match = String(text || "").match(/\bmodel\s*[:;]?\s*[\r\n ]*([A-Z0-9][A-Z0-9._/-]{4,})/i);
+  const match = String(text || "").match(/\bmodel\s*[:;]?\s*(?:number|no\.?)?\s*[\r\n ]*([A-Z0-9][A-Z0-9._/-]{4,})/i);
   if (!match) return "";
 
   const value = normalizeModelNumber(match[1]);
@@ -479,7 +479,7 @@ function findModelValue(lines) {
     const line = lines[index];
     if (!/\bmodel\b/i.test(line)) continue;
 
-    const sameLine = bestModelToken(line.replace(/^.*?\bmodel\b\s*[:;.-]?\s*/i, ""));
+    const sameLine = bestModelToken(line.replace(/^.*?\bmodel\b\s*(?:number|no\.?)?\s*[:;.-]?\s*/i, ""));
     if (sameLine) return sameLine;
 
     for (let offset = 1; offset <= 5; offset += 1) {
@@ -669,7 +669,7 @@ function isLikelyModelOrProduct(value) {
 function isLikelyModelToken(value) {
   return (/^SW[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value) ||
     /^M\d+[-_A-Z0-9]*[-_][A-Z0-9]*$/i.test(value)) &&
-    !/-(?:ACF|FA)$/i.test(value);
+    !/-(?:ACF|FA|FB|PORT.*)$/i.test(value);
 }
 
 function normalizeModelNumber(value) {
@@ -678,10 +678,13 @@ function normalizeModelNumber(value) {
   normalized = normalized
     .replace(/^SW-(\d{3})6(-)/, "SW-$1G$2")
     .replace(/^SW-(\d{3})G-84(-TH5$)/, "SW-$1G-64$2")
+    .replace(/^SW-(\d{3})0(-)/, "SW-$1G$2")
+    .replace(/^M2-W[8369](?:340|940)-64[0O]C$/, "M2-W6940-64OC")
     .replace(/^M2-W8(940-)/, "M2-W6$1")
     .replace(/^M2-W6(940-)64$/, "M2-W6$164OC")
     .replace(/^M2-W6(940-)640C(E?)$/, "M2-W6$164OC")
-    .replace(/^M2-W6(940-)6400$/, "M2-W6$164OC");
+    .replace(/^M2-W6(940-)6400$/, "M2-W6$164OC")
+    .replace(/^((?:M2-W6940-64OC|SW-\d{3}G-\d{2}-TH5))-(?:ACF|FA|FB)$/i, "$1");
 
   return normalized;
 }
@@ -1079,5 +1082,7 @@ function sendJson(res, statusCode, payload) {
 }
 
 module.exports = {
-  parseInventoryText
+  parseInventoryText,
+  normalizeModelNumber,
+  normalizeSerialNumber
 };
